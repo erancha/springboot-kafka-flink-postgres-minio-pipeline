@@ -1,0 +1,10 @@
+{
+  "eventType": "DATA",
+  "payload": {
+    "foo": "bar",
+    "count": 1,
+    "nested": {
+      "a": true
+    }
+  }
+}

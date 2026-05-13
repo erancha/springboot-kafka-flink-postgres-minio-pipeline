@@ -1,0 +1,104 @@
+package com.webcharm.pipeline;
+
+import com.webcharm.pipeline.config.EnvConfig;
+import com.webcharm.pipeline.functions.ParseEventFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.webcharm.pipeline.functions.MinioUploadFunction;
+import com.webcharm.pipeline.sinks.PostgresEventTypeCount5mSink;
+import com.webcharm.pipeline.sinks.PostgresProcessedEventSink;
+import com.webcharm.pipeline.types.EventTypeCount5m;
+import com.webcharm.pipeline.types.ProcessedEvent;
+import java.time.Duration;
+import java.time.Instant;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.util.Collector;
+import java.util.stream.StreamSupport;
+
+public class StreamingJob {
+  private static final Logger log = LoggerFactory.getLogger(StreamingJob.class);
+
+  public static void main(String[] args) throws Exception {
+    String kafkaBootstrap = EnvConfig.env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
+    String kafkaTopic = EnvConfig.env("KAFKA_TOPIC", "events");
+
+    StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    env.enableCheckpointing(10_000);
+
+    KafkaSource<String> source = KafkaSource.<String>builder()
+        .setBootstrapServers(kafkaBootstrap)
+        .setTopics(kafkaTopic)
+        .setGroupId("flink-processor")
+        .setStartingOffsets(OffsetsInitializer.earliest())
+        .setValueOnlyDeserializer(new SimpleStringSchema())
+        .build();
+
+    // noWatermarks() here is intentional: the real strategy is assigned on the typed stream below,
+    // after JSON parsing, where event timestamps are available.
+    DataStream<String> json = env.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-events");
+
+    DataStream<ProcessedEvent> processed = json
+        .map(new ParseEventFunction())
+        .name("parse-json");
+
+    DataStream<ProcessedEvent> processedWithWatermarks = processed
+        .assignTimestampsAndWatermarks(
+            WatermarkStrategy
+                .<ProcessedEvent>forBoundedOutOfOrderness(Duration.ofSeconds(10))
+                .withTimestampAssigner((event, timestamp) -> event.getEventTime().toEpochMilli()))
+        .name("event-time-watermarks");
+
+    // IMAGE path: upload to MinIO (clears base64/url, sets imageObjectKey), then write to Postgres
+    DataStream<ProcessedEvent> uploadedImages = processedWithWatermarks
+        .filter(e -> "IMAGE".equals(e.getEventType()))
+        .map(new MinioUploadFunction())
+        .name("minio-upload");
+
+    uploadedImages
+        .sinkTo(new PostgresProcessedEventSink())
+        .name("image-to-postgres");
+
+    // DATA path: write directly to Postgres
+    processedWithWatermarks
+        .filter(e -> "DATA".equals(e.getEventType()))
+        .sinkTo(new PostgresProcessedEventSink())
+        .name("data-to-postgres");
+
+    // Strip all binary/payload fields before keying and windowing: imageBase64 can be several MB and
+    // would be serialised into every checkpoint snapshot for each in-flight event in the window.
+    processedWithWatermarks
+        .map(e -> new ProcessedEvent(
+            e.getId(), e.getEventType(), e.getEventTime(), e.getSource(),
+            null, null, null, null, null, e.getDate()))
+        .name("strip-for-window")
+        .keyBy(ProcessedEvent::getEventType)
+        .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
+        .process(new ProcessWindowFunction<ProcessedEvent, EventTypeCount5m, String, TimeWindow>() {
+          @Override
+          public void process(String key, Context context, Iterable<ProcessedEvent> elements,
+              Collector<EventTypeCount5m> out) {
+            long count = StreamSupport.stream(elements.spliterator(), false).count();
+            out.collect(new EventTypeCount5m(
+                Instant.ofEpochMilli(context.window().getStart()),
+                Instant.ofEpochMilli(context.window().getEnd()),
+                key,
+                count));
+          }
+        })
+        .name("count-by-type-5m")
+        .sinkTo(new PostgresEventTypeCount5mSink())
+        .name("counts-5m-to-postgres");
+
+    log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
+    env.execute("Kafka->Flink->(MinIO,Postgres)");
+  }
+
+}

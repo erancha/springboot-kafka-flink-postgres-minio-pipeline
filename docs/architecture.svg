@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 1200 580" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .ingestion    { fill: #fff3cd; stroke: #ff9800; stroke-width: 2; }
+      .service-box  { fill: #e8f4f8; stroke: #0066cc; stroke-width: 2; }
+      .flink-region { fill: #f8f0ff; stroke: #9b59b6; stroke-width: 2; stroke-dasharray: 8,4; }
+      .flink-inner  { fill: #ecdcff; stroke: #9b59b6; stroke-width: 1.5; }
+      .stream-job   { fill: #f5eeff; stroke: #9b59b6; stroke-width: 1.5; stroke-dasharray: 4,2; }
+      .sink         { fill: #f0f4f8; stroke: #2196f3; stroke-width: 2; }
+      .grafana      { fill: #e4f795; stroke: #29a909; stroke-width: 2; }
+      .big-title    { font-family: Arial, sans-serif; font-size: 20px; font-weight: bold; fill: #333; }
+      .box-title    { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; fill: #333; }
+      .sub          { font-family: Arial, sans-serif; font-size: 11px; fill: #666; }
+      .region-label { font-family: Arial, sans-serif; font-size: 12px; font-weight: bold; fill: #7d3c98; }
+      .step         { font-family: Arial, sans-serif; font-size: 11px; fill: #444; }
+      .note         { font-family: Arial, sans-serif; font-size: 10px; fill: #999; font-style: italic; }
+      .alabel       { font-family: Arial, sans-serif; font-size: 10px; }
+    </style>
+    <marker id="a" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#555"/>
+    </marker>
+    <marker id="a-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#e74c3c"/>
+    </marker>
+    <marker id="a-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#9b59b6"/>
+    </marker>
+    <marker id="a-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#e67e22"/>
+    </marker>
+    <marker id="a-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#27ae60"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="580" fill="#ffffff"/>
+  <text x="600" y="32" class="big-title" text-anchor="middle" style="white-space: pre;">Real-time Data Pipeline Architecture</text>
+  <rect x="30" y="52" width="130" height="78" class="ingestion" rx="5"/>
+  <text x="95" y="78" class="box-title" text-anchor="middle" style="white-space: pre;">React UI</text>
+  <text x="95" y="100.888" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">Port 3030</text>
+  <text x="95" y="117.888" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">Event submission</text>
+  <rect x="278.147" y="52" width="155" height="78" class="ingestion" rx="5"/>
+  <text x="355.147" y="78" class="box-title" text-anchor="middle" style="white-space: pre; font-size: 14px;">Spring Boot</text>
+  <text x="355.147" y="100.888" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">REST API · Port 8030</text>
+  <text x="355.147" y="117.888" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">validate + publish</text>
+  <g transform="matrix(1, 0, 0, 1, 94.213203, -2.944163)">
+    <rect x="435" y="52" width="190" height="78" class="service-box" rx="5"/>
+    <text x="530" y="78" class="box-title" text-anchor="middle" style="white-space: pre;">Apache Kafka</text>
+    <text x="530" y="103.832" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">KRaft mode · Port 9092</text>
+    <text x="530" y="120.832" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">Topic: events</text>
+  </g>
+  <path d="M 160 91 L 273.731 91" stroke="#555" stroke-width="2" fill="none" marker-end="url(#a)" style=""/>
+  <text x="163" y="85" class="sub" style="white-space: pre;">POST /api/events</text>
+  <path d="M 433.883 88.792 L 527.005 88.792" stroke="#e74c3c" stroke-width="2" fill="none" marker-end="url(#a-red)" style=""/>
+  <text x="439.827" y="82.792" class="sub" fill="#e74c3c" style="white-space: pre; font-size: 11px;">JSON events</text>
+  <path d="M 629.365 127.792 L 629.365 160.792" stroke="#e74c3c" stroke-width="2" fill="none" marker-end="url(#a-red)"/>
+  <text x="636.309" y="150.792" class="sub" fill="#e74c3c" style="white-space: pre; font-size: 11px;">consume</text>
+  <rect x="30" y="163" width="790" height="210" class="flink-region" rx="10"/>
+  <text x="425" y="181" class="region-label" text-anchor="middle" style="white-space: pre;">Flink Cluster — Java 21 / Flink 2.2.1</text>
+  <rect x="45" y="190" width="130" height="58" class="flink-inner" rx="5"/>
+  <text x="110" y="210" class="box-title" text-anchor="middle" fill="#7d3c98" style="white-space: pre;">JobManager</text>
+  <text x="110" y="227" class="sub" text-anchor="middle" style="white-space: pre;">Web UI · Port 8081</text>
+  <text x="110" y="243" class="sub" text-anchor="middle" style="white-space: pre;">coordinates job</text>
+  <rect x="45" y="262" width="130" height="58" class="flink-inner" rx="5"/>
+  <text x="110" y="282" class="box-title" text-anchor="middle" fill="#7d3c98" style="white-space: pre;">TaskManager</text>
+  <text x="110" y="299" class="sub" text-anchor="middle" style="white-space: pre;">2 task slots</text>
+  <text x="110" y="315" class="sub" text-anchor="middle" style="white-space: pre;">executes tasks</text>
+  <rect x="195" y="192.721" width="580.878" height="142.279" class="stream-job" rx="5" style=""/>
+  <text x="507.152" y="212.193" class="region-label" text-anchor="middle" style="white-space: pre; font-size: 12px;">StreamingJob</text>
+  <text x="212.208" y="236.609" class="step" style="white-space: pre; font-size: 11px;">① Kafka source → parse JSON → assign event-time watermarks</text>
+  <text x="212.208" y="283.427" class="step" fill="#9b59b6" style="white-space: pre; font-size: 11px;">③ IMAGE branch:  filter → MinioUploadFunction (upload binary; capture objectKey)</text>
+  <text x="211.472" y="303.107" class="step" fill="#9b59b6" style="white-space: pre; font-size: 11px;">                 → PostgresProcessedEventSink  (writes record including imageObjectKey)</text>
+  <text x="212.208" y="260.127" class="step" fill="#17a589" style="white-space: pre; font-size: 11px;">② DATA branch:     filter → PostgresProcessedEventSink</text>
+  <text x="210.736" y="320.193" class="step" fill="#e67e22" style="white-space: pre; font-size: 11px;">④ ALL events:    keyBy(eventType) → 5-min TumblingEventTimeWindow → PostgresEventTypeCount5mSink</text>
+  <text x="45" y="358" class="note" style="white-space: pre;">Port 8081 is the JobManager management UI — not a data path. The flink-job service submits the JAR once at startup; the job runs autonomously thereafter.</text>
+  <path d="M 315 373 L 197 373 L 197 440" stroke="#9b59b6" stroke-width="2" fill="none" marker-end="url(#a-purple)"/>
+  <text x="200" y="398" class="alabel" fill="#9b59b6" style="white-space: pre;">IMAGE binary upload</text>
+  <path d="M 391.853 373.736 L 391.853 440.736" stroke="#9b59b6" stroke-width="2" fill="none" marker-end="url(#a-purple)"/>
+  <text x="401.477" y="410.736" class="alabel" fill="#9b59b6" style="white-space: pre; font-size: 10px;">IMAGE record</text>
+  <text x="401.985" y="395.279" class="alabel" fill="#17a589" style="white-space: pre; font-size: 10px;">DATA record</text>
+  <path d="M 543.909 370.792 L 543.909 437.792" stroke="#e67e22" stroke-width="2" fill="none" marker-end="url(#a-orange)"/>
+  <text x="546.909" y="407.792" class="alabel" fill="#e67e22" style="white-space: pre; font-size: 10px;">5-min counts</text>
+  <rect x="93.751" y="440" width="212.386" height="88.655" class="sink" rx="5" style=""/>
+  <text x="197" y="463" class="box-title" text-anchor="middle" style="white-space: pre;">MinIO</text>
+  <text x="197" y="480" class="sub" text-anchor="middle" style="white-space: pre;">S3-compatible · Ports 9000/9001</text>
+  <text class="sub" style="text-anchor: middle; white-space: pre;"><tspan x="197" y="496">Bucket: </tspan><tspan style="font-weight: 700;">images</tspan></text>
+  <text x="197" y="512" class="sub" text-anchor="middle" style="white-space: pre;">Key: images/{YYYY-MM-DD}/{uuid}.ext</text>
+  <rect x="360" y="440" width="260" height="130" class="sink" rx="5"/>
+  <text x="490" y="462" class="box-title" text-anchor="middle" style="white-space: pre;">PostgreSQL · Port 5432</text>
+  <text x="490" y="480" class="sub" text-anchor="middle" style="white-space: pre;">db: warehouse</text>
+  <text class="sub" style="font-weight: 700; text-anchor: middle; white-space: pre;" x="434.061" y="496.528">processed_events</text>
+  <text x="490" y="514" class="sub" text-anchor="middle" style="white-space: pre;">(IMAGE rows include imageObjectKey ref)</text>
+  <text class="sub" style="font-weight: 700; text-anchor: middle; white-space: pre;" x="442.893" y="541.041">event_type_count_5m</text>
+  <text x="491.472" y="557.777" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">(5-min window aggregates per eventType)</text>
+  <path d="M 620 505 L 685 505" stroke="#27ae60" stroke-width="2" fill="none" marker-end="url(#a-green)"/>
+  <text x="623" y="498" class="sub" fill="#27ae60" style="white-space: pre;">reads</text>
+  <rect x="686.472" y="462.817" width="150" height="82.335" class="grafana" rx="5" style=""/>
+  <text x="761.472" y="485.817" class="box-title" text-anchor="middle" style="white-space: pre; font-size: 14px;">Grafana</text>
+  <text x="757.792" y="516.33" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">Post-hoc &amp;</text>
+  <text x="764.416" y="532.594" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">real-time analytics</text>
+</svg>

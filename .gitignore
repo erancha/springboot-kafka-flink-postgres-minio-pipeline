@@ -1,0 +1,7 @@
+**/target/
+.claude/worktrees/
+.vscode/
+docs/superpowers/
+docs/senior-code-eval-*.md
+node_modules/
+org/
