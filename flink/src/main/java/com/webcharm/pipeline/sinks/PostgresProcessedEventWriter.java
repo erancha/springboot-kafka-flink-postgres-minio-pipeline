@@ -1,15 +1,11 @@
 package com.webcharm.pipeline.sinks;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.webcharm.pipeline.config.EnvConfig;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.io.IOException;
 import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.Instant;
-import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,22 +13,23 @@ import org.slf4j.LoggerFactory;
  * JDBC writer for processed_events. Payload sanitization is delegated to the parameterized
  * prepared statement (SQL injection prevention); no additional cleanPayload step is needed.
  * Three constructors: no-arg (reads env vars), url/user/password (opens JDBC connection),
- * Connection (accepts an already-open connection — used by mock unit tests and Testcontainers IT).
+ * Connection (accepts an already-open connection — used by unit tests and Testcontainers IT).
  */
-public class PostgresProcessedEventWriter implements SinkWriter<ProcessedEvent> {
+public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent> {
 
   private static final Logger log = LoggerFactory.getLogger(PostgresProcessedEventWriter.class);
 
+  private static final String SQL =
+      "INSERT INTO processed_events (id, event_type, event_time, source, payload, image_object_key, inserted_at) "
+          + "VALUES (?, ?, ?, ?, ?::jsonb, ?, ?) "
+          + "ON CONFLICT (id) DO UPDATE SET event_type = EXCLUDED.event_type, event_time = EXCLUDED.event_time, "
+          + "source = EXCLUDED.source, payload = EXCLUDED.payload, image_object_key = EXCLUDED.image_object_key";
+
   private final ObjectMapper mapper;
-  private final Connection conn;
-  private final PreparedStatement stmt;
 
   /** No-arg constructor: reads connection parameters from environment variables. */
   public PostgresProcessedEventWriter() {
-    this(
-        EnvConfig.env("POSTGRES_URL", "jdbc:postgresql://postgres:5432/warehouse"),
-        EnvConfig.env("POSTGRES_USER", "postgres"),
-        EnvConfig.env("POSTGRES_PASSWORD", "postgres"));
+    this(envConnection());
   }
 
   /** Opens a new JDBC connection from the supplied credentials, then delegates to the Connection constructor. */
@@ -42,30 +39,9 @@ public class PostgresProcessedEventWriter implements SinkWriter<ProcessedEvent> 
 
   /** Accepts an already-open connection and prepares the upsert statement. */
   PostgresProcessedEventWriter(Connection conn) {
+    super(conn, SQL);
     this.mapper = new ObjectMapper();
-    this.conn = conn;
-    try {
-      this.conn.setAutoCommit(true);
-      this.stmt = conn.prepareStatement(
-          "INSERT INTO processed_events (id, event_type, event_time, source, payload, image_object_key, inserted_at) "
-              + "VALUES (?, ?, ?, ?, ?::jsonb, ?, ?) "
-              + "ON CONFLICT (id) DO UPDATE SET event_type = EXCLUDED.event_type, event_time = EXCLUDED.event_time, "
-              + "source = EXCLUDED.source, payload = EXCLUDED.payload, image_object_key = EXCLUDED.image_object_key");
-      log.info("PostgresProcessedEventWriter ready");
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to prepare statement", e);
-    }
-  }
-
-  /** Opens a JDBC connection; wraps any SQLException in a RuntimeException. */
-  private static Connection openConnection(String url, String user, String password) {
-    try {
-      Connection c = DriverManager.getConnection(url, user, password);
-      log.info("PostgresProcessedEventWriter connected to {}", url);
-      return c;
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to initialize Postgres connection", e);
-    }
+    log.info("PostgresProcessedEventWriter ready");
   }
 
   @Override
@@ -85,18 +61,5 @@ public class PostgresProcessedEventWriter implements SinkWriter<ProcessedEvent> 
     } catch (Exception e) {
       throw new IOException("Failed to write processed event", e);
     }
-  }
-
-  @Override
-  public void flush(boolean endOfInput) {
-    // autoCommit=true; nothing to flush
-  }
-
-  @Override
-  public void close() throws Exception {
-    if (stmt != null)
-      stmt.close();
-    if (conn != null)
-      conn.close();
   }
 }
