@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Stop the stack.
-# Usage: down.sh [--remove-volumes [--prune-dangling-images]]
-#   --remove-volumes         Also remove volumes (data lost)
-#   --prune-dangling-images  With --remove-volumes: also purge dangling Docker images and volumes from builds
+# Usage: stop.sh [--keep-volumes [--prune-dangling-images]]
+#   --keep-volumes           Keep volumes (data preserved)
+#   --prune-dangling-images  Without --keep-volumes: also purge dangling Docker images and volumes from builds
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,12 +16,12 @@ fi
 
 require_docker
 
-if [[ "${1:-}" == "--remove-volumes" ]]; then
+if [[ "${1:-}" == "--keep-volumes" ]]; then
+  compose down
+else
   compose down -v --remove-orphans
-  if [[ "${2:-}" == "--prune-dangling-images" ]]; then
+  if [[ "${1:-}" == "--prune-dangling-images" ]]; then
     docker image prune -f
     docker volume prune -f
   fi
-else
-  compose down
 fi

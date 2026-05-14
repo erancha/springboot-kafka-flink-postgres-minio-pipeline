@@ -11,9 +11,8 @@ A real-time data pipeline exercise demonstrating end-to-end event streaming. Use
 All stack operations go through scripts in `scripts/`:
 
 ```bash
-./scripts/up.sh          # Start full Docker Compose stack
-./scripts/down.sh        # Stop (keeps volumes); --remove-volumes removes volumes; --prune-dangling-images also purges build artifacts
-./scripts/restart.sh     # Stop, rebuild, and restart
+./scripts/start.sh           # Start full Docker Compose stack; --restart stops first, --rebuild rebuilds images
+./scripts/stop.sh            # Stop (keeps volumes); --remove-volumes removes volumes; --prune-dangling-images also purges build artifacts
 ./scripts/build.sh       # Build all Docker images
 ./scripts/ps.sh          # Show running containers and service URLs
 ./scripts/health.sh      # Check container health

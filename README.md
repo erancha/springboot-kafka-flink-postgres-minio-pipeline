@@ -46,7 +46,7 @@ WSL:
 # If needed, make scripts executable:
 chmod +x scripts/*.sh
 
-./scripts/up.sh
+./scripts/start.sh
 ```
 
 Then:
@@ -57,12 +57,13 @@ Then:
 Additional commands:
 
 ```bash
-./scripts/ps.sh                  # show running containers and service URLs
-./scripts/logs.sh --help         # stream logs (supports -e/--errors and per-service filtering)
-./scripts/compare-images.sh      # compare image counts in MinIO vs PostgreSQL
-./scripts/restart.sh             # stop, rebuild, and restart the full stack
-./scripts/down.sh --help         # stop the stack; --remove-volumes removes volumes, --prune-dangling-images also purges build artifacts
-./scripts/test.sh --help         # run tests; see next section for suite details
+./scripts/start.sh --help               # start options (--restart, --rebuild)
+./scripts/stop.sh --help                # stop the stack; --remove-volumes removes volumes, --prune-dangling-images also purges build artifacts
+./scripts/test.sh --help                # run tests; see next section for suite details
+
+./scripts/ps.sh                         # show running containers and service URLs
+./scripts/logs.sh --help                # stream logs (supports -e/--errors and per-service filtering)
+./scripts/compare-images.sh             # compare image counts in MinIO vs PostgreSQL
 ```
 
 ## Testing

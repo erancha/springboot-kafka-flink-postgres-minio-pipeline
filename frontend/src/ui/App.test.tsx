@@ -33,6 +33,22 @@ describe('canSubmit', () => {
   });
 });
 
+describe('delay between requests', () => {
+  it('is hidden when sendCount is 1 (default)', () => {
+    render(<App />);
+    expect(screen.queryByLabelText(/delay \(s\)/i)).not.toBeInTheDocument();
+  });
+
+  it('appears with default value 0 when sendCount is greater than 1', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getAllByRole('combobox')[1], '10');
+    const input = screen.getByLabelText(/delay \(s\)/i);
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveValue(0);
+  });
+});
+
 describe('submit() error handling', () => {
   afterEach(() => {
     vi.restoreAllMocks();

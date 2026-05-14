@@ -75,7 +75,11 @@ public class StreamingJob {
         .assignTimestampsAndWatermarks(
             WatermarkStrategy
                 .<ProcessedEvent>forBoundedOutOfOrderness(Duration.ofSeconds(10))
-                .withTimestampAssigner((event, timestamp) -> event.getEventTime().toEpochMilli()))
+                .withTimestampAssigner((event, timestamp) -> event.getEventTime().toEpochMilli())
+                // Without idleness, a partition that goes silent after a burst holds the global
+                // watermark frozen — windows never fire. Marking idle partitions excluded lets
+                // the watermark advance on active partitions (or to Long.MAX_VALUE when all idle).
+                .withIdleness(Duration.ofMinutes(1)))
         .name("event-time-watermarks");
 
     // IMAGE path: upload to MinIO (clears base64/url, sets imageObjectKey), then write to Postgres
@@ -96,7 +100,22 @@ public class StreamingJob {
 
     // Strip all binary/payload fields before keying and windowing: imageBase64 can be several MB and
     // would be serialised into every checkpoint snapshot for each in-flight event in the window.
-    processedWithWatermarks
+    buildWindowedCounts(processedWithWatermarks)
+        .sinkTo(new PostgresEventTypeCount5mSink())
+        .name("counts-5m-to-postgres");
+
+    log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
+    env.execute("Kafka->Flink->(MinIO,Postgres)");
+  }
+
+  /**
+   * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time
+   * windows, and emits one EventTypeCount5m per (type, window) pair when each window closes.
+   * Extracted as a package-private static method so StreamingJobIT can exercise it directly
+   * with a controlled bounded source — no Kafka or wall-clock waiting required.
+   */
+  static DataStream<EventTypeCount5m> buildWindowedCounts(DataStream<ProcessedEvent> withWatermarks) {
+    return withWatermarks
         .map(e -> new ProcessedEvent(
             e.getId(), e.getEventType(), e.getEventTime(), e.getSource(),
             null, null, null, null, null, e.getDate()))
@@ -115,12 +134,7 @@ public class StreamingJob {
                 count));
           }
         })
-        .name("count-by-type-5m")
-        .sinkTo(new PostgresEventTypeCount5mSink())
-        .name("counts-5m-to-postgres");
-
-    log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
-    env.execute("Kafka->Flink->(MinIO,Postgres)");
+        .name("count-by-type-5m");
   }
 
   /** Serializes DlqRecord to JSON bytes for the dead-letter Kafka topic. */

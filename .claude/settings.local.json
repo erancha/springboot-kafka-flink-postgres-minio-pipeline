@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn -f flink/pom.xml test-compile -Xlint:deprecation)",
+      "Bash(mvn -f flink/pom.xml verify)",
+      "Bash(mvn -f flink/pom.xml verify -Xlint:deprecation)",
+      "Bash(mvn verify *)",
+      "Bash(mvn compile *)",
+      "Bash(mvn -f flink/pom.xml compile test-compile -Dmaven.compiler.showDeprecation=true)",
+      "Bash(mvn -f flink/pom.xml compile test-compile)",
+      "Bash(javap -verbose -cp ~/.m2/repository/org/apache/flink/flink-runtime/2.2.1/flink-runtime-2.2.1.jar org.apache.flink.streaming.api.environment.StreamExecutionEnvironment)"
+    ]
+  }
+}

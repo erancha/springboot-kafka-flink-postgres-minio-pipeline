@@ -10,6 +10,7 @@ export default function App() {
   const [result, setResult] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
   const [sendCount, setSendCount] = useState<number>(1);
+  const [delaySeconds, setDelaySeconds] = useState<number>(0);
 
   useEffect(() => {
     if (eventType === 'IMAGE') {
@@ -79,6 +80,10 @@ export default function App() {
         } else {
           setResult(`Sent ${i + 1}/${sendCount}`);
         }
+
+        if (delaySeconds > 0 && i < sendCount - 1) {
+          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+        }
       }
     } catch (e: any) {
       setResult(String(e?.message ?? e));
@@ -118,6 +123,20 @@ export default function App() {
             )}
           </select>
         </label>
+
+        {sendCount > 1 && (
+          <label>
+            Delay (s):{' '}
+            <input
+              type='number'
+              min={0}
+              max={60}
+              value={delaySeconds}
+              onChange={(e) => setDelaySeconds(Math.min(60, Math.max(0, Number(e.target.value))))}
+              style={{ width: 56 }}
+            />
+          </label>
+        )}
 
         <button disabled={!canSubmit || busy} onClick={submit}>
           {busy ? 'Sending…' : 'Send event'}
