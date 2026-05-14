@@ -57,15 +57,12 @@ Then:
 Additional commands:
 
 ```bash
-./scripts/compare-images.sh # compare image counts in MinIO vs PostgreSQL (direct and Flink-aggregated).
-./scripts/ps.sh
-./scripts/logs.sh
-./scripts/logs.sh --errors
-./scripts/logs.sh backend
-./scripts/logs.sh --errors backend
-./scripts/restart.sh        # rebuilds and restarts the full stack.
-./scripts/down.sh           # stops the stack, keeps all volumes (data persists).
-./scripts/clean.sh --prune  # stops the stack, removes all volumes (data lost), removes orphans, and optionally prunes dangling images.
+./scripts/ps.sh                  # show running containers and service URLs
+./scripts/logs.sh --help         # stream logs (supports -e/--errors and per-service filtering)
+./scripts/compare-images.sh      # compare image counts in MinIO vs PostgreSQL
+./scripts/restart.sh             # stop, rebuild, and restart the full stack
+./scripts/down.sh --help         # stop the stack; --remove-volumes removes volumes, --prune-dangling-images also purges build artifacts
+./scripts/test.sh --help         # run tests; see next section for suite details
 ```
 
 ## Testing

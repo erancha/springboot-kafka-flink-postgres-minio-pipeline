@@ -60,7 +60,7 @@ public class EventProducer {
       log.error("Timed out publishing event id={} to topic={} after {}s", key, topic, sendTimeoutSeconds);
       throw new KafkaPublishException("Kafka send timed out for event id=" + key, e);
     } catch (ExecutionException e) {
-      log.error("Failed to publish event id={} to topic={}: {}", key, topic, e.getCause().getMessage(), e.getCause());
+      log.error("Failed to publish event id={} to topic={}: {}", key, topic, e.getCause().getMessage());
       throw new KafkaPublishException("Kafka send failed for event id=" + key, e.getCause());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();

@@ -12,9 +12,8 @@ All stack operations go through scripts in `scripts/`:
 
 ```bash
 ./scripts/up.sh          # Start full Docker Compose stack
-./scripts/down.sh        # Stop (keeps volumes)
+./scripts/down.sh        # Stop (keeps volumes); --remove-volumes removes volumes; --prune-dangling-images also purges build artifacts
 ./scripts/restart.sh     # Stop, rebuild, and restart
-./scripts/clean.sh       # Stop and remove volumes; add --prune to purge dangling images
 ./scripts/build.sh       # Build all Docker images
 ./scripts/ps.sh          # Show running containers and service URLs
 ./scripts/health.sh      # Check container health

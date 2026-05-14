@@ -34,7 +34,7 @@ services:
 
   # Kafka UI for inspecting topics/messages locally during development and demos.
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:v0.7.2
     ports:
       - "8088:8030"
     environment:
@@ -84,7 +84,7 @@ services:
 
   # MinIO provides local S3-compatible object storage for IMAGE event outputs.
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
       - MINIO_ROOT_USER=minio
@@ -102,7 +102,7 @@ services:
 
   # MinIO bootstrap job to create the images bucket required by the assignment pipeline; this is a one-shot init container and is expected to exit successfully.
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy
@@ -116,19 +116,11 @@ services:
       - SERVER_PORT=8080
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - APP_KAFKA_TOPIC=events
-      - APP_MINIO_ENDPOINT=http://minio:9000
-      - APP_MINIO_ACCESS_KEY=minio
-      - APP_MINIO_SECRET_KEY=minio123
-      - APP_MINIO_BUCKET=images
     ports:
       - "8030:8080"
     depends_on:
       kafka:
         condition: service_healthy
-      minio:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
 
   # Flink JobManager providing the stream processing control plane for the assignment.
   flink-jobmanager:
