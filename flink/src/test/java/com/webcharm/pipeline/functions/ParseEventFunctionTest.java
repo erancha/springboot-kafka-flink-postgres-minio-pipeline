@@ -4,7 +4,6 @@ import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import org.apache.flink.api.common.functions.DefaultOpenContext;
 import org.apache.flink.streaming.api.TimerService;
-import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 import org.junit.jupiter.api.Test;

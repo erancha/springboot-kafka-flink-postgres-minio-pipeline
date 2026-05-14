@@ -1,7 +1,6 @@
 package com.webcharm.backend.kafka;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.webcharm.backend.kafka.KafkaPublishException;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

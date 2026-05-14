@@ -68,7 +68,6 @@ class MinioUploadFunctionTest {
   // ── statObject existence guard ────────────────────────────────────────────
 
   @Test
-  @SuppressWarnings("unchecked")
   void map_urlEvent_objectAlreadyExists_skipsHttpFetchAndUpload() throws Exception {
     when(minioClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
 
