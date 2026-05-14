@@ -11,3 +11,4 @@ org/
 .env.*
 *.local
 !.env.example
+flink/**/*.class
