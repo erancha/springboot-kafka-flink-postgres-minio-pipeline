@@ -1,26 +1,35 @@
 package com.webcharm.pipeline;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.config.EnvConfig;
 import com.webcharm.pipeline.functions.ParseEventFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.webcharm.pipeline.functions.MinioUploadFunction;
 import com.webcharm.pipeline.sinks.PostgresEventTypeCount5mSink;
 import com.webcharm.pipeline.sinks.PostgresProcessedEventSink;
+import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.EventTypeCount5m;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.stream.StreamSupport;
 
 public class StreamingJob {
@@ -29,6 +38,7 @@ public class StreamingJob {
   public static void main(String[] args) throws Exception {
     String kafkaBootstrap = EnvConfig.env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
     String kafkaTopic = EnvConfig.env("KAFKA_TOPIC", "events");
+    String dlqTopic = kafkaTopic + "-dlq";
 
     StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.enableCheckpointing(10_000);
@@ -45,9 +55,21 @@ public class StreamingJob {
     // after JSON parsing, where event timestamps are available.
     DataStream<String> json = env.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-events");
 
-    DataStream<ProcessedEvent> processed = json
-        .map(new ParseEventFunction())
+    SingleOutputStreamOperator<ProcessedEvent> processed = json
+        .process(new ParseEventFunction())
         .name("parse-json");
+
+    // Route unparseable messages to a dead-letter Kafka topic instead of crashing the job.
+    processed.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG)
+        .sinkTo(KafkaSink.<DlqRecord>builder()
+            .setBootstrapServers(kafkaBootstrap)
+            .setRecordSerializer(
+                KafkaRecordSerializationSchema.<DlqRecord>builder()
+                    .setTopic(dlqTopic)
+                    .setValueSerializationSchema(new DlqRecordSerializer())
+                    .build())
+            .build())
+        .name("dlq-to-kafka");
 
     DataStream<ProcessedEvent> processedWithWatermarks = processed
         .assignTimestampsAndWatermarks(
@@ -101,4 +123,22 @@ public class StreamingJob {
     env.execute("Kafka->Flink->(MinIO,Postgres)");
   }
 
+  /** Serializes DlqRecord to JSON bytes for the dead-letter Kafka topic. */
+  private static class DlqRecordSerializer implements SerializationSchema<DlqRecord> {
+    private transient ObjectMapper mapper;
+
+    @Override
+    public void open(InitializationContext context) {
+      mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    }
+
+    @Override
+    public byte[] serialize(DlqRecord record) {
+      try {
+        return mapper.writeValueAsBytes(record);
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
 }

@@ -2,6 +2,6 @@
 .claude/worktrees/
 .vscode/
 docs/superpowers/
-docs/senior-code-eval-*.md
+docs/*-code-eval-*.md
 node_modules/
 org/
