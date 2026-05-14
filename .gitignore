@@ -5,3 +5,9 @@ docs/superpowers/
 docs/*-code-eval-*.md
 node_modules/
 org/
+
+# Environment files — never commit credentials
+.env
+.env.*
+*.local
+!.env.example
