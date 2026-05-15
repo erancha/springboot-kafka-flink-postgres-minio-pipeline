@@ -8,10 +8,14 @@ import org.apache.flink.api.connector.sink2.WriterInitContext;
 
 /**
  * Writes processed events (both DATA and IMAGE) to the processed_events table.
- * Implements Sink<T> rather than the deprecated RichSinkFunction so the sink participates
- * in Flink's checkpoint barriers. Delivery semantic is at-least-once: on recovery Flink
- * replays every Kafka offset since the last completed checkpoint, and the writer's idempotent
- * upsert (ON CONFLICT (id) DO UPDATE) absorbs duplicate writes safely.
+ * Implements Sink rather than the deprecated RichSinkFunction so the sink participates
+ * in Flink's checkpoint barriers. Target delivery is exactly-once observable, achieved
+ * by at-least-once replay combined with an idempotent upsert on id (ON CONFLICT (id) DO UPDATE).
+ * Not 2PC.
+ *
+ * Current gap: PostgresProcessedEventWriter swallows write exceptions instead of re-throwing,
+ * so a failed write is silently dropped (at-most-once on failure, not exactly-once).
+ * See flink/PIPELINE_FLOW.md for the full failure inventory.
  */
 public class PostgresProcessedEventSink implements Sink<ProcessedEvent> {
 

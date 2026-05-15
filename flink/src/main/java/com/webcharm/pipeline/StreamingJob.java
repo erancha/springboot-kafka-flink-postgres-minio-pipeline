@@ -38,7 +38,7 @@ public class StreamingJob {
   public static void main(String[] args) throws Exception {
     String kafkaBootstrap = EnvConfig.env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
     String kafkaTopic = EnvConfig.env("KAFKA_TOPIC", "events");
-    String dlqTopic = kafkaTopic + "-dlq";
+    String dlqTopic = EnvConfig.env("KAFKA_DLQ_TOPIC", "events-dlq");
 
     StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.enableCheckpointing(10_000);
@@ -61,15 +61,8 @@ public class StreamingJob {
 
     // Route unparseable messages to a dead-letter Kafka topic instead of crashing the job.
     processed.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG)
-        .sinkTo(KafkaSink.<DlqRecord>builder()
-            .setBootstrapServers(kafkaBootstrap)
-            .setRecordSerializer(
-                KafkaRecordSerializationSchema.<DlqRecord>builder()
-                    .setTopic(dlqTopic)
-                    .setValueSerializationSchema(new DlqRecordSerializer())
-                    .build())
-            .build())
-        .name("dlq-to-kafka");
+        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
+        .name("parse-errors-to-dlq");
 
     DataStream<ProcessedEvent> processedWithWatermarks = processed
         .assignTimestampsAndWatermarks(
@@ -82,11 +75,16 @@ public class StreamingJob {
                 .withIdleness(Duration.ofMinutes(1)))
         .name("event-time-watermarks");
 
-    // IMAGE path: upload to MinIO (clears base64/url, sets imageObjectKey), then write to Postgres
-    DataStream<ProcessedEvent> uploadedImages = processedWithWatermarks
+    // IMAGE path: upload to MinIO (clears base64/url, sets imageObjectKey), then write to Postgres.
+    // Upload/decode failures go to the DLQ side output instead of crashing the operator.
+    SingleOutputStreamOperator<ProcessedEvent> uploadedImages = processedWithWatermarks
         .filter(e -> "IMAGE".equals(e.getEventType()))
-        .map(new MinioUploadFunction())
+        .process(new MinioUploadFunction())
         .name("minio-upload");
+
+    uploadedImages.getSideOutput(MinioUploadFunction.UPLOAD_ERROR_TAG)
+        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
+        .name("minio-errors-to-dlq");
 
     uploadedImages
         .sinkTo(new PostgresProcessedEventSink())
@@ -109,8 +107,8 @@ public class StreamingJob {
   }
 
   /**
-   * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time
-   * windows, and emits one EventTypeCount5m per (type, window) pair when each window closes.
+   * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time windows, 
+   * and emits one EventTypeCount5m per (type, window) pair when each window closes.
    * Extracted as a package-private static method so StreamingJobIT can exercise it directly
    * with a controlled bounded source — no Kafka or wall-clock waiting required.
    */
@@ -135,6 +133,18 @@ public class StreamingJob {
           }
         })
         .name("count-by-type-5m");
+  }
+
+  /** Builds a KafkaSink that writes DlqRecords to the given topic. Each call returns a new instance. */
+  private static KafkaSink<DlqRecord> buildDlqSink(String kafkaBootstrap, String dlqTopic) {
+    return KafkaSink.<DlqRecord>builder()
+        .setBootstrapServers(kafkaBootstrap)
+        .setRecordSerializer(
+            KafkaRecordSerializationSchema.<DlqRecord>builder()
+                .setTopic(dlqTopic)
+                .setValueSerializationSchema(new DlqRecordSerializer())
+                .build())
+        .build();
   }
 
   /** Serializes DlqRecord to JSON bytes for the dead-letter Kafka topic. */

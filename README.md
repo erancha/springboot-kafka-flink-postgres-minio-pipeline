@@ -171,10 +171,12 @@ Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is 
 
 This repository is a local, single-node demo (single Kafka broker, single Postgres, single MinIO, single Flink JobManager/TaskManager). In production you would scale/replicate these components and harden failure handling.
 
-At a high level, the pipeline aims for "at-least-once" processing semantics:
+At a high level, the pipeline targets **exactly-once observable** processing — at-least-once delivery from Kafka + Flink checkpoint replay, combined with idempotent writes (upsert on id; MinIO `statObject` existence check) so duplicate replays are absorbed. Not 2PC.
+
+The current implementation has gaps that prevent this target from being fully met today (notably, the Postgres writer swallows exceptions on failure, causing silent data loss). The full per-failure inventory and design target is in [`flink/PIPELINE_FLOW.md`](flink/PIPELINE_FLOW.md).
 
 - Kafka is the durable buffer between ingestion (backend) and processing (Flink).
-- Flink processes streams continuously; if it restarts, it may reprocess some messages unless you enforce idempotency in sinks.
+- Flink processes streams continuously; if it restarts, it may reprocess some messages — idempotent sinks absorb the duplicates.
 
 Key considerations:
 

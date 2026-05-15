@@ -1,6 +1,8 @@
 package com.webcharm.pipeline.functions;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webcharm.pipeline.config.EnvConfig;
+import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -11,64 +13,93 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
 import org.apache.flink.api.common.functions.OpenContext;
-import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
+import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Uploads the image payload to MinIO and replaces the binary fields with the resulting object key.
+ * ProcessFunction that uploads the image payload to MinIO and replaces the binary fields with the resulting object key.
  * Follows SRP: responsible for MinIO upload only; the Postgres write is handled separately by PostgresProcessedEventSink.
- * Previously both operations lived in a single sink class (S3LikeImageSink), making each hard to test or reuse in isolation.
- * Implemented as a map function so the binary payload is cleared before the event reaches any stateful operator,
- * keeping checkpoint state small.
+ * Upload and decode failures are routed to UPLOAD_ERROR_TAG (side output) as DlqRecords so a bad event or transient MinIO error does not trigger a Flink job restart and Kafka replay.
+ * Binary payload is cleared before any stateful operator to keep checkpoint state small.
  */
-public class MinioUploadFunction extends RichMapFunction<ProcessedEvent, ProcessedEvent> {
+public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, ProcessedEvent> {
+
+  /** Side-output tag for events that fail MinIO upload or image decoding. */
+  public static final OutputTag<DlqRecord> UPLOAD_ERROR_TAG = new OutputTag<DlqRecord>("minio-upload-error") {
+  };
 
   private static final Logger log = LoggerFactory.getLogger(MinioUploadFunction.class);
 
   private transient MinioClient minio;
   private transient HttpClient http;
+  private transient ObjectMapper mapper;
 
   /**
-   * Initializes the MinIO client and HTTP client once per task slot.
-   * Called by Flink before the first {@link #map} invocation on this operator instance.
+   * Initializes the MinIO client, HTTP client, and JSON serializer once per task slot.
+   * Called by Flink before the first processElement invocation on this operator instance.
    */
   @Override
   public void open(OpenContext openContext) {
-    String endpoint  = EnvConfig.env("MINIO_ENDPOINT",   "http://minio:9000");
-    String accessKey = EnvConfig.env("MINIO_ACCESS_KEY",  "minio");
-    String secretKey = EnvConfig.env("MINIO_SECRET_KEY",  "minio123");
+    String endpoint = EnvConfig.env("MINIO_ENDPOINT", "http://minio:9000");
+    String accessKey = EnvConfig.env("MINIO_ACCESS_KEY", "minio");
+    String secretKey = EnvConfig.env("MINIO_SECRET_KEY", "minio123");
     this.minio = MinioClient.builder()
         .endpoint(endpoint)
         .credentials(accessKey, secretKey)
         .build();
     this.http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+    this.mapper = new ObjectMapper();
     log.info("MinioUploadFunction initialized: endpoint={}", endpoint);
   }
 
   /**
-   * Transforms the incoming Kafka event: fetches or decodes the image, uploads it to MinIO,
-   * then returns the same event with the binary fields cleared and imageObjectKey populated.
-   * The object key is derived solely from event fields (id and imageContentType), making it
-   * deterministic across replays. For URL-sourced images, a statObject existence check is
-   * performed before fetching — if the object is already present the fetch and upload are skipped,
+   * Routes the event through upload(). On any exception, emits a DlqRecord to UPLOAD_ERROR_TAG instead of propagating, 
+   * thus preventing job restart on transient MinIO errors or malformed payloads.
+   */
+  @Override
+  public void processElement(ProcessedEvent value, Context ctx, Collector<ProcessedEvent> out) {
+    try {
+      out.collect(upload(value));
+    } catch (Exception e) {
+      log.error("MinIO upload failed for event id={}: {}", value.getId(), e.getMessage(), e);
+      ctx.output(UPLOAD_ERROR_TAG, new DlqRecord(toRawString(value), e.getMessage(), Instant.now()));
+    }
+  }
+
+  /** Serializes the event to JSON for the DLQ raw field; falls back to the event ID if serialization itself fails. */
+  private String toRawString(ProcessedEvent value) {
+    try {
+      return mapper.writeValueAsString(value);
+    } catch (Exception e) {
+      return value.getId().toString();
+    }
+  }
+
+  /**
+   * Fetches or decodes the image, uploads it to MinIO, then returns the same event with the binary fields cleared and imageObjectKey populated. 
+   * The object key is derived solely from event fields (id and imageContentType), making it deterministic across replays.
+   * For URL-sourced images, a statObject existence check is performed before fetching — if the object is already present the fetch and upload are skipped, 
    * making the URL path idempotent under Flink at-least-once replay.
    *
    * @param value the ProcessedEvent deserialized from the Kafka events topic
    * @return the event with imageBase64 and imageUrl nulled out and imageObjectKey set;
    *         returned unchanged if neither image field is present
    */
-  @Override
-  public ProcessedEvent map(ProcessedEvent value) throws Exception {
-    String bucket      = EnvConfig.env("MINIO_BUCKET", "images");
+  ProcessedEvent upload(ProcessedEvent value) throws Exception {
+    String bucket = EnvConfig.env("MINIO_BUCKET", "images");
     String contentType = (value.getImageContentType() == null || value.getImageContentType().isBlank())
-        ? "image/jpeg" : value.getImageContentType();
+        ? "image/jpeg"
+        : value.getImageContentType();
 
-    String date      = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
+    String date = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
     String extension = guessExtension(contentType);
     String objectKey = "images/" + date + "/" + value.getId() + extension;
 
@@ -110,12 +141,14 @@ public class MinioUploadFunction extends RichMapFunction<ProcessedEvent, Process
     return value;
   }
 
-  public MinioUploadFunction() {}
+  public MinioUploadFunction() {
+  }
 
   /** Allows injecting clients in unit tests without starting Docker. */
   MinioUploadFunction(MinioClient minio, HttpClient http) {
     this.minio = minio;
-    this.http  = http;
+    this.http = http;
+    this.mapper = new ObjectMapper();
   }
 
   /**
@@ -176,9 +209,12 @@ public class MinioUploadFunction extends RichMapFunction<ProcessedEvent, Process
    */
   private static String guessExtension(String contentType) {
     String ct = contentType == null ? "" : contentType.toLowerCase();
-    if (ct.contains("png"))  return ".png";
-    if (ct.contains("webp")) return ".webp";
-    if (ct.contains("gif"))  return ".gif";
+    if (ct.contains("png"))
+      return ".png";
+    if (ct.contains("webp"))
+      return ".webp";
+    if (ct.contains("gif"))
+      return ".gif";
     return ".jpg";
   }
 }

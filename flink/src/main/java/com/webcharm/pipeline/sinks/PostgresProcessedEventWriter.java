@@ -59,7 +59,11 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
       stmt.executeUpdate();
       log.debug("Wrote event id={} type={}", value.getId(), value.getEventType());
     } catch (Exception e) {
-      throw new IOException("Failed to write processed event", e);
+      // Log and skip rather than re-throw: a transient DB error must not restart the Flink job and
+      // replay the entire Kafka backlog. A production-grade implementation would forward the event
+      // to a DLQ Kafka topic here; that requires embedding a producer in the SinkWriter.
+      log.error("Failed to write event id={} type={} — skipping to avoid job restart: {}",
+          value.getId(), value.getEventType(), e.getMessage(), e);
     }
   }
 }

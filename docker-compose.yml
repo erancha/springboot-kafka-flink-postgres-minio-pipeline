@@ -43,13 +43,15 @@ services:
       kafka:
         condition: service_healthy
 
-  # Kafka bootstrap job to create the assignment topic before producers/consumers begin exchanging events.
+  # Kafka bootstrap job to create the events and DLQ topics before producers/consumers begin exchanging events.
   kafka-init:
     image: apache/kafka:3.7.1
     depends_on:
       kafka:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 1 --replication-factor 1"]
+    entrypoint: ["/bin/sh", "-c", "
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000"]
 
   # PostgreSQL simulating a data-warehouse-like analytics database for processed DATA/IMAGE events.
   postgres:
@@ -165,6 +167,7 @@ services:
         jobmanager.rpc.address: flink-jobmanager
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_HOST}:${KAFKA_PORT}
       KAFKA_TOPIC: ${KAFKA_TOPIC}
+      KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC}
       MINIO_ENDPOINT: http://${MINIO_HOST}:${MINIO_PORT}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
