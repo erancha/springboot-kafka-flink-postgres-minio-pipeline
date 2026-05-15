@@ -10,7 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.io.IOException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
@@ -97,13 +97,25 @@ class EventControllerTest {
     }
 
     @Test
-    void publishImageUpload_emptyFile_returnsError() {
+    void publishImageUpload_emptyFile_returns400() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "empty.jpg", "image/jpeg", new byte[0]);
 
-        // Spring MVC propagates the IllegalArgumentException as a nested servlet exception
-        // (no global exception handler configured), so MockMvc re-throws it rather than
-        // returning a 5xx response body.
-        assertThrows(Exception.class, () -> mvc.perform(multipart("/api/events/image-upload").file(file)));
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void publishImageUpload_ioError_returns500() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "broken.jpg", "image/jpeg", new byte[]{1}) {
+            @Override
+            public byte[] getBytes() throws IOException {
+                throw new IOException("disk read failed");
+            }
+        };
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isInternalServerError());
     }
 }
