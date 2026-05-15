@@ -59,7 +59,7 @@ public class StreamingJob {
         .process(new ParseEventFunction())
         .name("parse-json");
 
-    // Route unparseable messages to a dead-letter Kafka topic instead of crashing the job.
+    // Route unparsable messages to a dead-letter Kafka topic instead of crashing the job.
     processed.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG)
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("parse-errors-to-dlq");
@@ -97,7 +97,7 @@ public class StreamingJob {
         .name("data-to-postgres");
 
     // Strip all binary/payload fields before keying and windowing: imageBase64 can be several MB and
-    // would be serialised into every checkpoint snapshot for each in-flight event in the window.
+    // would be serialized into every checkpoint snapshot for each in-flight event in the window.
     buildWindowedCounts(processedWithWatermarks)
         .sinkTo(new PostgresEventTypeCount5mSink())
         .name("counts-5m-to-postgres");

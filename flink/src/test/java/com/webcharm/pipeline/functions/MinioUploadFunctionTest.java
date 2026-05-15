@@ -35,8 +35,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class MinioUploadFunctionTest {
 
-  @Mock MinioClient minioClient;
-  @Mock HttpClient  httpClient;
+  @Mock
+  MinioClient minioClient;
+  @Mock
+  HttpClient httpClient;
 
   // ── DLQ routing ───────────────────────────────────────────────────────────
 
@@ -45,22 +47,38 @@ class MinioUploadFunctionTest {
    * following the same pattern used by ParseEventFunctionTest.TestableFn.
    */
   static class TestableFn extends MinioUploadFunction {
-    final List<DlqRecord>      dlqCapture  = new ArrayList<>();
+    final List<DlqRecord> dlqCapture = new ArrayList<>();
     final List<ProcessedEvent> mainCapture = new ArrayList<>();
 
-    TestableFn(MinioClient minio, HttpClient http) { super(minio, http); }
+    TestableFn(MinioClient minio, HttpClient http) {
+      super(minio, http);
+    }
 
     void run(ProcessedEvent event) throws Exception {
       Context ctx = new Context() {
-        @Override public Long timestamp() { return null; }
-        @Override public TimerService timerService() { return null; }
-        @Override public <X> void output(OutputTag<X> tag, X val) {
-          if (val instanceof DlqRecord r) dlqCapture.add(r);
+        @Override
+        public Long timestamp() {
+          return null;
+        }
+
+        @Override
+        public TimerService timerService() {
+          return null;
+        }
+
+        @Override
+        public <X> void output(OutputTag<X> tag, X val) {
+          if (val instanceof DlqRecord r)
+            dlqCapture.add(r);
         }
       };
       Collector<ProcessedEvent> col = new Collector<>() {
-        public void collect(ProcessedEvent e) { mainCapture.add(e); }
-        public void close() {}
+        public void collect(ProcessedEvent e) {
+          mainCapture.add(e);
+        }
+
+        public void close() {
+        }
       };
       processElement(event, ctx, col);
     }
@@ -144,7 +162,7 @@ class MinioUploadFunctionTest {
 
     HttpResponse<InputStream> httpResp = mock(HttpResponse.class);
     when(httpResp.statusCode()).thenReturn(200);
-    when(httpResp.body()).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
+    when(httpResp.body()).thenReturn(new ByteArrayInputStream(new byte[] { 1, 2, 3 }));
     doReturn(httpResp).when(httpClient).send(any(), any());
 
     ProcessedEvent event = urlEvent("https://cdn.example.com/photo.jpg", "image/jpeg");
@@ -187,7 +205,7 @@ class MinioUploadFunctionTest {
 
     HttpResponse<InputStream> httpResp = mock(HttpResponse.class);
     when(httpResp.statusCode()).thenReturn(200);
-    when(httpResp.body()).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
+    when(httpResp.body()).thenReturn(new ByteArrayInputStream(new byte[] { 1, 2, 3 }));
     doThrow(new IOException("connection reset"))
         .doReturn(httpResp)
         .when(httpClient).send(any(), any());
@@ -200,7 +218,6 @@ class MinioUploadFunctionTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
   void upload_urlEvent_allFetchAttemptsExhausted_throwsIllegalState() throws Exception {
     ErrorResponse errResp = mock(ErrorResponse.class);
     when(errResp.code()).thenReturn("NoSuchKey");
