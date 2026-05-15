@@ -10,6 +10,9 @@ import io.minio.MinioClient;
 import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
 import io.minio.messages.ErrorResponse;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.time.Instant;
@@ -26,7 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Verifies validateImageUrl (SSRF guard), statObject existence guard, and DLQ side-output routing.
+ * Verifies validateImageUrl (SSRF guard), statObject existence guard, DLQ side-output routing,
+ * HTTP response-size cap, and fetch retry logic.
  */
 @ExtendWith(MockitoExtension.class)
 class MinioUploadFunctionTest {
@@ -138,9 +142,9 @@ class MinioUploadFunctionTest {
     ErrorResponseException notFound = new ErrorResponseException(errResp, null, "");
     when(minioClient.statObject(any())).thenThrow(notFound);
 
-    HttpResponse<byte[]> httpResp = mock(HttpResponse.class);
+    HttpResponse<InputStream> httpResp = mock(HttpResponse.class);
     when(httpResp.statusCode()).thenReturn(200);
-    when(httpResp.body()).thenReturn(new byte[]{1, 2, 3});
+    when(httpResp.body()).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
     doReturn(httpResp).when(httpClient).send(any(), any());
 
     ProcessedEvent event = urlEvent("https://cdn.example.com/photo.jpg", "image/jpeg");
@@ -148,6 +152,68 @@ class MinioUploadFunctionTest {
 
     verify(httpClient).send(any(), any());
     verify(minioClient).putObject(any());
+  }
+
+  // ── HTTP size cap ─────────────────────────────────────────────────────────
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void upload_urlEvent_responseExceedsSizeCap_throwsIllegalState() throws Exception {
+    ErrorResponse errResp = mock(ErrorResponse.class);
+    when(errResp.code()).thenReturn("NoSuchKey");
+    ErrorResponseException notFound = new ErrorResponseException(errResp, null, "");
+    when(minioClient.statObject(any())).thenThrow(notFound);
+
+    byte[] oversized = new byte[10 * 1024 * 1024 + 1];
+    HttpResponse<InputStream> httpResp = mock(HttpResponse.class);
+    when(httpResp.statusCode()).thenReturn(200);
+    when(httpResp.body()).thenReturn(new ByteArrayInputStream(oversized));
+    doReturn(httpResp).when(httpClient).send(any(), any());
+
+    assertThrows(IllegalStateException.class,
+        () -> new MinioUploadFunction(minioClient, httpClient)
+            .upload(urlEvent("https://cdn.example.com/huge.jpg", "image/jpeg")));
+  }
+
+  // ── retry logic ───────────────────────────────────────────────────────────
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void upload_urlEvent_transientErrorThenSuccess_retriesAndUploads() throws Exception {
+    ErrorResponse errResp = mock(ErrorResponse.class);
+    when(errResp.code()).thenReturn("NoSuchKey");
+    ErrorResponseException notFound = new ErrorResponseException(errResp, null, "");
+    when(minioClient.statObject(any())).thenThrow(notFound);
+
+    HttpResponse<InputStream> httpResp = mock(HttpResponse.class);
+    when(httpResp.statusCode()).thenReturn(200);
+    when(httpResp.body()).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
+    doThrow(new IOException("connection reset"))
+        .doReturn(httpResp)
+        .when(httpClient).send(any(), any());
+
+    new MinioUploadFunction(minioClient, httpClient)
+        .upload(urlEvent("https://cdn.example.com/photo.jpg", "image/jpeg"));
+
+    verify(httpClient, times(2)).send(any(), any());
+    verify(minioClient).putObject(any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void upload_urlEvent_allFetchAttemptsExhausted_throwsIllegalState() throws Exception {
+    ErrorResponse errResp = mock(ErrorResponse.class);
+    when(errResp.code()).thenReturn("NoSuchKey");
+    ErrorResponseException notFound = new ErrorResponseException(errResp, null, "");
+    when(minioClient.statObject(any())).thenThrow(notFound);
+
+    doThrow(new IOException("timeout")).when(httpClient).send(any(), any());
+
+    assertThrows(IllegalStateException.class,
+        () -> new MinioUploadFunction(minioClient, httpClient)
+            .upload(urlEvent("https://cdn.example.com/photo.jpg", "image/jpeg")));
+
+    verify(httpClient, times(3)).send(any(), any());
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────

@@ -9,10 +9,13 @@ import io.minio.PutObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -38,6 +41,15 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
 
   private static final Logger log = LoggerFactory.getLogger(MinioUploadFunction.class);
 
+  private static final int CONNECT_TIMEOUT_SECS = 10; // TCP connect limit
+  private static final int READ_TIMEOUT_SECS = 30; // per-request read limit
+  private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024; // hard cap; prevents OOM on huge responses
+  private static final int MAX_FETCH_ATTEMPTS = 3; // total attempts before routing to DLQ
+
+  // Base unit for exponential backoff: sleep = interRetryDelayMs × 2^(attempt-1) (1 s, 2 s, 4 s, …).
+  // Set to 0 in the test constructor so retries are instant.
+  private final long interRetryDelayMs;
+
   private transient MinioClient minio;
   private transient HttpClient http;
   private transient ObjectMapper mapper;
@@ -55,7 +67,10 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
         .endpoint(endpoint)
         .credentials(accessKey, secretKey)
         .build();
-    this.http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+    this.http = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECS))
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .build();
     this.mapper = new ObjectMapper();
     log.info("MinioUploadFunction initialized: endpoint={}", endpoint);
   }
@@ -114,12 +129,7 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
         value.setImageUrl(null);
         return value;
       }
-      HttpRequest req = HttpRequest.newBuilder(URI.create(value.getImageUrl())).GET().build();
-      HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
-      if (resp.statusCode() / 100 != 2) {
-        throw new IllegalStateException("Failed to fetch imageUrl status=" + resp.statusCode());
-      }
-      bytes = resp.body();
+      bytes = fetchWithRetry(value.getImageUrl());
     } else {
       log.warn("IMAGE event id={} has no imageBase64 or imageUrl — skipping upload", value.getId());
       return value;
@@ -142,13 +152,67 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
   }
 
   public MinioUploadFunction() {
+    this.interRetryDelayMs = 1_000;
   }
 
-  /** Allows injecting clients in unit tests without starting Docker. */
+  /** Allows injecting clients in unit tests without starting Docker (zero retry delay). */
   MinioUploadFunction(MinioClient minio, HttpClient http) {
     this.minio = minio;
     this.http = http;
     this.mapper = new ObjectMapper();
+    this.interRetryDelayMs = 0;
+  }
+
+  /**
+   * Retries fetch up to MAX_FETCH_ATTEMPTS times on IOException (network error or timeout) or 5xx.
+   * Sleep between attempts is exponential: 1s 2s 4s (exponential backoff).
+   * Non-retryable failures (4xx, size cap exceeded) propagate immediately to the DLQ path.
+   */
+  private byte[] fetchWithRetry(String url) throws Exception {
+    IOException last = null;
+    for (int attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+      try {
+        return fetch(url);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw e;
+      } catch (IOException e) {
+        last = e;
+        log.warn("Fetch attempt {}/{} failed for url={}: {}", attempt, MAX_FETCH_ATTEMPTS, url, e.getMessage());
+        if (attempt < MAX_FETCH_ATTEMPTS && interRetryDelayMs > 0) {
+          Thread.sleep(interRetryDelayMs << (attempt - 1)); // 1 s, 2 s, 4 s … (left-shift doubles the delay each attempt)
+        }
+      }
+    }
+    throw new IllegalStateException("All " + MAX_FETCH_ATTEMPTS + " fetch attempts failed for url=" + url, last);
+  }
+
+  /**
+   * Single HTTP fetch with a per-request read timeout and a response-size cap.
+   * Throws IOException for transient 5xx (retryable); IllegalStateException for 4xx or
+   * oversized response (permanent, routed to DLQ by processElement).
+   */
+  private byte[] fetch(String url) throws Exception {
+    HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+        .timeout(Duration.ofSeconds(READ_TIMEOUT_SECS))
+        .GET()
+        .build();
+    HttpResponse<InputStream> resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+    int status = resp.statusCode();
+    if (status / 100 == 5) {
+      throw new IOException("Transient server error fetching imageUrl status=" + status);
+    }
+    if (status / 100 != 2) {
+      throw new IllegalStateException("Failed to fetch imageUrl status=" + status);
+    }
+    try (InputStream body = resp.body()) {
+      byte[] bytes = body.readNBytes((int) (MAX_IMAGE_BYTES + 1));
+      if (bytes.length > MAX_IMAGE_BYTES) {
+        throw new IllegalStateException(
+            "Image response exceeds " + (MAX_IMAGE_BYTES / 1024 / 1024) + " MB cap for url=" + url);
+      }
+      return bytes;
+    }
   }
 
   /**

@@ -68,7 +68,7 @@ Additional commands:
 
 ## Testing
 
-### Unit tests — no Docker, no framework startup (~10 sec, 14 tests)
+### Unit tests — no Docker, no framework startup
 
 Pure unit tests: exercise one class in isolation, all dependencies mocked.
 
@@ -76,10 +76,10 @@ Pure unit tests: exercise one class in isolation, all dependencies mocked.
 mvn -f flink/pom.xml test
 ```
 
-- `ParseEventFunction` — 4 JSON-parsing tests
-- `MinioUploadFunction` — 6 SSRF URL-validation tests
-- `PostgresProcessedEventWriter` — 2 Mockito tests verifying JDBC parameter binding via a mock `Connection`
-- `EventProducer` (backend) — 2 Mockito tests; run via `mvn -f backend/pom.xml test`
+- `ParseEventFunction` — JSON parsing and DLQ side-output routing for bad payloads
+- `MinioUploadFunction` — SSRF URL-validation, statObject existence guard, DLQ routing, HTTP response-size cap, fetch retry logic
+- `PostgresProcessedEventWriter` — JDBC parameter binding and error semantics via a mock `Connection`
+- `EventProducer` (backend) — Mockito tests; run via `mvn -f backend/pom.xml test`
 
 ### Component tests — no Docker, but load a framework or browser context
 

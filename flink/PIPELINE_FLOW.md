@@ -21,8 +21,8 @@ Inventory of every failure mode in the pipeline today, the gap vs. a sustainable
 
 | # | Failure                                                     | Class           | Current behavior | Gap                                            | New behavior                                                                               |
 |---|-------------------------------------------------------------|-----------------|------------------|------------------------------------------------|--------------------------------------------------------------------------------------------|
-| 3 | Bad base64 / bad URL / disallowed scheme or host / HTTP 4xx | Permanent       | DLQ              | -                                              | -                                                                                          |
-| 4 | HTTP 5xx, HTTP timeout, MinIO 5xx / timeout                 | Transient       | DLQ              | No in-operator retry; treats blip as bad data  | In-operator retry with bounded backoff (e.g. 3 attempts: 1s/2s/4s) → re-throw if exhausted |
+| 3 | Bad base64 / bad URL / disallowed scheme or host / HTTP 4xx / response > 10 MB | Permanent       | DLQ              | -                                              | -                                                                                          |
+| 4 | HTTP 5xx, HTTP timeout (connect > 10 s or read > 30 s)      | Transient       | In-operator retry (3 attempts, exponential backoff: 1 s / 2 s) → DLQ if exhausted | -   | -                                                                                          |
 | 5 | MinIO auth / bucket missing / disk full                     | Infra misconfig | DLQ              | Silent data routing instead of loud failure    | `log.error(...)` + re-throw immediately                                                    |
 
 ### Postgres write stage (`PostgresProcessedEventWriter` / `PostgresEventTypeCount5mWriter`)
