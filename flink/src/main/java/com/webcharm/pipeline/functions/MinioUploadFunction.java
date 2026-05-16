@@ -128,9 +128,7 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
 
     if (objectExists(bucket, objectKey)) {
       log.debug("Skipping upload — object already exists: key={}", objectKey);
-      value.setImageObjectKey(objectKey);
-      value.setImageUrl(null);
-      return value;
+      return withObjectKey(value, objectKey);
     }
 
     byte[] bytes = fetchWithRetry(url);
@@ -146,13 +144,21 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
     }
     log.debug("Uploaded image: key={}", objectKey);
 
-    value.setImageObjectKey(objectKey);
-    value.setImageUrl(null);
-    return value;
+    return withObjectKey(value, objectKey);
   }
 
   public MinioUploadFunction() {
     this.interRetryDelayMs = 1_000;
+  }
+
+  /**
+   * Returns a new ProcessedEvent with imageObjectKey set and imageUrl cleared.
+   * Never mutates the input — Flink may replay the same object reference under at-least-once semantics.
+   */
+  private static ProcessedEvent withObjectKey(ProcessedEvent src, String objectKey) {
+    return new ProcessedEvent(
+        src.getId(), src.getEventType(), src.getEventTime(), src.getSource(),
+        src.getPayload(), null, objectKey, src.getDate());
   }
 
   /** Allows injecting clients in unit tests without starting Docker (zero retry delay). */

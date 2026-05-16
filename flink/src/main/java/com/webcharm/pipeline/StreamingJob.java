@@ -14,10 +14,11 @@ import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ExternalizedCheckpointRetention;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
@@ -48,12 +49,15 @@ public class StreamingJob {
 
     // Retry indefinitely with exponential back-off (5 s → 10 min); let Flink HA
     // manage job-level failover rather than giving up after N attempts.
-    env.setRestartStrategy(RestartStrategies.exponentialDelayRestart(
-        Time.seconds(5),
-        Time.minutes(10),
-        2.0,
-        Time.minutes(10),
-        0.1));
+    // RestartStrategies / Time were removed in Flink 2.x; configure via Configuration instead.
+    Configuration restartCfg = new Configuration();
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY, "exponential-delay");
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_INITIAL_BACKOFF, Duration.ofSeconds(5));
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_MAX_BACKOFF, Duration.ofMinutes(10));
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_BACKOFF_MULTIPLIER, 2.0);
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD, Duration.ofMinutes(10));
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
+    env.configure(restartCfg);
 
     CheckpointConfig ckpt = env.getCheckpointConfig();
     // Ensure at least 5 s idle between checkpoints to reduce back-pressure.
@@ -63,8 +67,7 @@ public class StreamingJob {
     // Disallow overlapping checkpoints; one in-flight at a time.
     ckpt.setMaxConcurrentCheckpoints(1);
     // Keep the last checkpoint on disk when the job is cancelled so recovery is possible.
-    ckpt.setExternalizedCheckpointCleanup(
-        CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+    ckpt.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
 
     KafkaSource<String> source = KafkaSource.<String>builder()
         .setBootstrapServers(kafkaBootstrap)
