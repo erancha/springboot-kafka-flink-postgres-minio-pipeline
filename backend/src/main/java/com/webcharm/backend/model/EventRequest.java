@@ -2,6 +2,7 @@ package com.webcharm.backend.model;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -9,6 +10,7 @@ import java.util.UUID;
 
 public class EventRequest {
   @NotBlank
+  @Pattern(regexp = "DATA|IMAGE", message = "eventType must be DATA or IMAGE")
   private String eventType;
 
   private Map<String, Object> payload;

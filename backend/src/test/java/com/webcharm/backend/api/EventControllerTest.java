@@ -47,6 +47,14 @@ class EventControllerTest {
     }
 
     @Test
+    void publishEvent_unknownEventType_returns400() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"BANANA\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void publishEvent_blankEventType_returns400() throws Exception {
         mvc.perform(post("/api/events")
                 .contentType(MediaType.APPLICATION_JSON)
