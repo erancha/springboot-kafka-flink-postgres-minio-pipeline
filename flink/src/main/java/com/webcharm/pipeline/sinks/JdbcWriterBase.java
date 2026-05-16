@@ -22,7 +22,8 @@ import org.slf4j.LoggerFactory;
  *
  * Transient JDBC errors (connection reset, deadlock — SQLState 08xxx/40xxx/57xxx) are retried with
  * exponential backoff and a fresh connection before propagating as IOException. Permanent errors
- * (constraint violations, invalid JSONB — all other SQLStates) are not retried.
+ * (constraint violations, invalid JSONB — all other SQLStates) throw PermanentJdbcException
+ * immediately so callers can route to a dead-letter queue without triggering Flink checkpoint replay.
  */
 abstract class JdbcWriterBase<T> implements SinkWriter<T> {
 
@@ -122,7 +123,8 @@ abstract class JdbcWriterBase<T> implements SinkWriter<T> {
   /**
    * Executes op, retrying on transient JDBC errors with exponential backoff (1s, 2s, 4s, ...)
    * and a fresh connection before each retry. Permanent errors (constraint violation, invalid JSONB)
-   * are not retried. Throws IOException after MAX_ATTEMPTS, triggering Flink checkpoint replay.
+   * are not retried and throw PermanentJdbcException immediately so callers can route to a DLQ.
+   * Transient failures throw IOException after MAX_ATTEMPTS, triggering Flink checkpoint replay.
    */
   protected void executeWithRetry(JdbcOperation op) throws IOException {
     SQLException lastEx = null;
@@ -132,7 +134,7 @@ abstract class JdbcWriterBase<T> implements SinkWriter<T> {
         return;
       } catch (SQLException e) {
         if (!isTransient(e)) {
-          throw new IOException("Permanent JDBC failure (SQLState=" + e.getSQLState() + ")", e);
+          throw new PermanentJdbcException("Permanent JDBC failure (SQLState=" + e.getSQLState() + ")", e);
         }
         lastEx = e;
         log.warn("Transient JDBC error (attempt {}/{}), SQLState={}: {}",

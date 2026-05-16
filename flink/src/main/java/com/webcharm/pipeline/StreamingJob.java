@@ -6,8 +6,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.config.EnvConfig;
 import com.webcharm.pipeline.functions.ParseEventFunction;
 import com.webcharm.pipeline.functions.MinioUploadFunction;
-import com.webcharm.pipeline.sinks.PostgresEventTypeCount5mSink;
-import com.webcharm.pipeline.sinks.PostgresProcessedEventSink;
+import com.webcharm.pipeline.functions.PostgresCountWriteFunction;
+import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.EventTypeCount5m;
 import com.webcharm.pipeline.types.ProcessedEvent;
@@ -55,19 +55,16 @@ public class StreamingJob {
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_INITIAL_BACKOFF, Duration.ofSeconds(5));
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_MAX_BACKOFF, Duration.ofMinutes(10));
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_BACKOFF_MULTIPLIER, 2.0);
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD, Duration.ofMinutes(10));
+    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD,
+        Duration.ofMinutes(10));
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
     env.configure(restartCfg);
 
     CheckpointConfig ckpt = env.getCheckpointConfig();
-    // Ensure at least 5 s idle between checkpoints to reduce back-pressure.
-    ckpt.setMinPauseBetweenCheckpoints(5_000);
-    // Abort a checkpoint that does not complete within 60 s.
-    ckpt.setCheckpointTimeout(60_000);
-    // Disallow overlapping checkpoints; one in-flight at a time.
-    ckpt.setMaxConcurrentCheckpoints(1);
-    // Keep the last checkpoint on disk when the job is cancelled so recovery is possible.
-    ckpt.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
+    ckpt.setMinPauseBetweenCheckpoints(5_000); // at least 5 s idle between checkpoints to reduce back-pressure
+    ckpt.setCheckpointTimeout(60_000); // abort a checkpoint that does not complete within 60 s
+    ckpt.setMaxConcurrentCheckpoints(1); // disallow overlapping checkpoints; one in-flight at a time
+    ckpt.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION); // keep last checkpoint on cancellation for recovery
 
     KafkaSource<String> source = KafkaSource.<String>builder()
         .setBootstrapServers(kafkaBootstrap)
@@ -80,19 +77,20 @@ public class StreamingJob {
         .setProperty("enable.auto.commit", "false")
         .build();
 
-    // noWatermarks() here is intentional: the real strategy is assigned on the typed stream below,
-    // after JSON parsing, where event timestamps are available.
+    // =========== happy path ===========
+    // noWatermarks() intentional: the real strategy is assigned below after parsing, where event timestamps are available.
     DataStream<String> json = env.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-events");
 
     SingleOutputStreamOperator<ProcessedEvent> processed = json
         .process(new ParseEventFunction())
         .name("parse-json");
+    // ===================================
 
-    // Route unparsable messages to a dead-letter Kafka topic instead of crashing the job.
-    processed.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG)
+    processed.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG) // =========== unhappy path: unparseable messages (bad JSON, missing fields)
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("parse-errors-to-dlq");
 
+    // =========== happy path: stamp parsed events with event-time watermarks ===========
     DataStream<ProcessedEvent> processedWithWatermarks = processed
         .assignTimestampsAndWatermarks(
             WatermarkStrategy
@@ -103,32 +101,36 @@ public class StreamingJob {
                 // the watermark advance on active partitions (or to Long.MAX_VALUE when all idle).
                 .withIdleness(Duration.ofMinutes(1)))
         .name("event-time-watermarks");
+    // =====================================================================================
 
-    // IMAGE path: upload to MinIO (sets imageObjectKey, clears imageUrl), then write to Postgres.
-    // Upload failures go to the DLQ side output instead of crashing the operator.
     SingleOutputStreamOperator<ProcessedEvent> uploadedImages = processedWithWatermarks
         .filter(e -> "IMAGE".equals(e.getEventType()))
-        .process(new MinioUploadFunction())
+        .process(new MinioUploadFunction()) // =========== happy path: IMAGE events with imageObjectKey set
         .name("minio-upload");
 
-    uploadedImages.getSideOutput(MinioUploadFunction.UPLOAD_ERROR_TAG)
+    uploadedImages.getSideOutput(MinioUploadFunction.UPLOAD_ERROR_TAG) // =========== unhappy path: MinIO fetch/upload failures (unreachable URL, size cap, etc.)
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("minio-errors-to-dlq");
 
     uploadedImages
-        .sinkTo(new PostgresProcessedEventSink())
-        .name("image-to-postgres");
+        .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect; replay cannot fix a bad payload
+        .name("image-to-postgres")
+        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
+        .name("postgres-image-errors-to-dlq");
 
-    // DATA path: write directly to Postgres
     processedWithWatermarks
         .filter(e -> "DATA".equals(e.getEventType()))
-        .sinkTo(new PostgresProcessedEventSink())
-        .name("data-to-postgres");
+        .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect
+        .name("data-to-postgres")
+        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
+        .name("postgres-data-errors-to-dlq");
 
-    // Strip all payload fields before keying and windowing to keep checkpoint state small.
+    // Payload fields are stripped before keying and windowing to keep checkpoint state small.
     buildWindowedCounts(processedWithWatermarks)
-        .sinkTo(new PostgresEventTypeCount5mSink())
-        .name("counts-5m-to-postgres");
+        .process(new PostgresCountWriteFunction()) // =========== happy path: Postgres write is a side effect
+        .name("counts-5m-to-postgres")
+        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
+        .name("postgres-count-errors-to-dlq");
 
     log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
     env.execute("Kafka->Flink->(MinIO,Postgres)");

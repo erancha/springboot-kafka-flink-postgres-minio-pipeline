@@ -61,9 +61,9 @@ class PostgresProcessedEventWriterTest {
     verify(stmt).executeUpdate();
   }
 
-  /** A JDBC failure must propagate as IOException so Flink can replay from the last checkpoint. */
+  /** Transient JDBC failure (null SQLState → treated as unknown/transient) propagates as IOException for Flink replay. */
   @Test
-  void write_jdbcFailure_throwsIOException() throws Exception {
+  void write_transientJdbcFailure_throwsIOException() throws Exception {
     when(stmt.executeUpdate()).thenThrow(new SQLException("connection reset"));
     ProcessedEvent event = new ProcessedEvent(
         UUID.fromString("00000000-0000-0000-0000-000000000003"),
@@ -71,5 +71,18 @@ class PostgresProcessedEventWriterTest {
         null, null, null, LocalDate.of(2024, 1, 15));
 
     assertThrows(IOException.class, () -> writer.write(event, null));
+  }
+
+  /** Permanent JDBC failure (non-transient SQLState) propagates as PermanentJdbcException so callers can DLQ-route it. */
+  @Test
+  void write_permanentJdbcFailure_throwsPermanentJdbcException() throws Exception {
+    // SQLState 23514 = check_violation (permanent; does not start with 08/40/57)
+    when(stmt.executeUpdate()).thenThrow(new SQLException("check constraint violated", "23514"));
+    ProcessedEvent event = new ProcessedEvent(
+        UUID.fromString("00000000-0000-0000-0000-000000000004"),
+        "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
+        null, null, null, LocalDate.of(2024, 1, 15));
+
+    assertThrows(PermanentJdbcException.class, () -> writer.write(event, null));
   }
 }
