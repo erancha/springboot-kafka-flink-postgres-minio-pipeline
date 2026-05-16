@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 /**
  * JDBC writer for processed_events. Payload sanitization is delegated to the parameterized
  * prepared statement (SQL injection prevention); no additional cleanPayload step is needed.
- * Three constructors: no-arg (reads env vars), url/user/password (opens JDBC connection),
+ * Three constructors: no-arg (reads env vars), url/user/password (opens a HikariCP pool),
  * Connection (accepts an already-open connection — used by unit tests and Testcontainers IT).
  */
 public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent> {
@@ -29,12 +29,16 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
 
   /** No-arg constructor: reads connection parameters from environment variables. */
   public PostgresProcessedEventWriter() {
-    this(envConnection());
+    super(envPool(), SQL);
+    this.mapper = new ObjectMapper();
+    log.info("PostgresProcessedEventWriter ready");
   }
 
-  /** Opens a new JDBC connection from the supplied credentials, then delegates to the Connection constructor. */
+  /** Opens a HikariCP pool from the supplied credentials. */
   PostgresProcessedEventWriter(String url, String user, String password) {
-    this(openConnection(url, user, password));
+    super(createPool(url, user, password), SQL);
+    this.mapper = new ObjectMapper();
+    log.info("PostgresProcessedEventWriter ready");
   }
 
   /** Accepts an already-open connection and prepares the upsert statement. */
@@ -46,9 +50,9 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
 
   @Override
   public void write(ProcessedEvent value, Context context) throws IOException {
-    try {
-      String payloadJson = value.getPayload() == null ? null
-          : mapper.writeValueAsString(value.getPayload());
+    String payloadJson = value.getPayload() == null ? null
+        : mapper.writeValueAsString(value.getPayload());
+    executeWithRetry(() -> {
       stmt.setObject(1, value.getId());
       stmt.setString(2, value.getEventType());
       stmt.setTimestamp(3, Timestamp.from(value.getEventTime()));
@@ -57,13 +61,7 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
       stmt.setString(6, value.getImageObjectKey());
       stmt.setTimestamp(7, Timestamp.from(Instant.now()));
       stmt.executeUpdate();
-      log.debug("Wrote event id={} type={}", value.getId(), value.getEventType());
-    } catch (Exception e) {
-      // Log and skip rather than re-throw: a transient DB error must not restart the Flink job and
-      // replay the entire Kafka backlog. A production-grade implementation would forward the event
-      // to a DLQ Kafka topic here; that requires embedding a producer in the SinkWriter.
-      log.error("Failed to write event id={} type={} — skipping to avoid job restart: {}",
-          value.getId(), value.getEventType(), e.getMessage(), e);
-    }
+    });
+    log.debug("Wrote event id={} type={}", value.getId(), value.getEventType());
   }
 }

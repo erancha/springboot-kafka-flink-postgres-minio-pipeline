@@ -15,7 +15,8 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import java.io.IOException;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -60,15 +61,15 @@ class PostgresProcessedEventWriterTest {
     verify(stmt).executeUpdate();
   }
 
-  /** A JDBC failure must be swallowed: re-throwing causes a Flink job restart and Kafka replay. */
+  /** A JDBC failure must propagate as IOException so Flink can replay from the last checkpoint. */
   @Test
-  void write_jdbcFailure_logsAndDoesNotThrow() throws Exception {
+  void write_jdbcFailure_throwsIOException() throws Exception {
     when(stmt.executeUpdate()).thenThrow(new SQLException("connection reset"));
     ProcessedEvent event = new ProcessedEvent(
         UUID.fromString("00000000-0000-0000-0000-000000000003"),
         "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         null, null, null, LocalDate.of(2024, 1, 15));
 
-    assertDoesNotThrow(() -> writer.write(event, null));
+    assertThrows(IOException.class, () -> writer.write(event, null));
   }
 }

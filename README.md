@@ -171,36 +171,25 @@ Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is 
 - The Flink job uses routing based on `eventType` and writes to two different sinks (Postgres for `DATA`, MinIO for `IMAGE`).
 - MinIO bucket `images` is created by `minio-init` on startup. (To browse stored images: see [Architecture](#architecture).)
 
-## Error handling and high availability (HA)
+## Error handling and fault tolerance
 
-This repository is a local, single-node demo (single Kafka broker, single Postgres, single MinIO, single Flink JobManager/TaskManager). In production you would scale/replicate these components and harden failure handling.
+The pipeline achieves **effective exactly-once** delivery: Flink checkpoints every 10 s; on restart it replays from the last successful checkpoint; idempotent upserts (`ON CONFLICT (id) DO UPDATE` in Postgres, `statObject` existence check in MinIO) absorb any duplicates. Not 2PC.
 
-At a high level, the pipeline targets **exactly-once observable** processing — at-least-once delivery from Kafka + Flink checkpoint replay, combined with idempotent writes (upsert on id; MinIO `statObject` existence check) so duplicate replays are absorbed. Not 2PC.
+**What is in place:**
 
-The current implementation has gaps that prevent this target from being fully met today (notably, the Postgres writer swallows exceptions on failure, causing silent data loss). The full per-failure inventory and design target is in [`flink/PIPELINE_FLOW.md`](flink/PIPELINE_FLOW.md).
+- Kafka consumer offsets are committed only on successful checkpoint (`enable.auto.commit=false`), so the committed offset always reflects durably processed state.
+- Flink checkpoints: 10 s interval, 60 s timeout, 5 s minimum pause between checkpoints, one in-flight at a time. Externalized checkpoints (`RETAIN_ON_CANCELLATION`) are kept on disk after cancellation.
+- Restart strategy: exponential back-off (5 s initial, 2× multiplier, 10 min cap), indefinite retries.
+- Sink write failures propagate as `IOException`, causing Flink to replay from the last checkpoint rather than silently drop records.
+- JDBC connections use a HikariCP pool (pool size 1 per task slot, keepalive every 60 s), preventing silent connection death from TCP timeouts or Postgres idle-connection culling.
+- Transient Postgres write errors (connection reset, deadlock) are retried in-operator with exponential backoff before escalating to checkpoint replay. Permanent errors (constraint violations, invalid JSONB) are not retried.
+- Unparsable events and MinIO upload failures are routed to the `events-dlq` Kafka topic instead of crashing the job.
 
-- Kafka is the durable buffer between ingestion (backend) and processing (Flink).
-- Flink processes streams continuously; if it restarts, it may reprocess some messages — idempotent sinks absorb the duplicates.
+**Out of scope (single-node deployment):**
 
-Key considerations:
+- Kafka: single broker, replication factor 1 — broker loss means data loss.
+- Flink: single JobManager (no HA), single TaskManager — no automatic failover at the cluster level.
+- Postgres and MinIO: no replication or standby.
+- Permanent Postgres write failures (e.g. constraint violations) currently trigger checkpoint replay rather than DLQ routing — replay cannot fix a bad payload and will loop until the restart strategy exhausts retries.
 
-- **Backend -> Kafka**
-  - The backend should validate and reject malformed requests before publishing.
-  - On publish failures, a production service would typically retry with backoff and return an error to the caller if it cannot enqueue.
-
-- **Kafka durability / availability**
-  - For HA you would run multiple brokers and set replication factor > 1.
-  - Topics, retention policies, and partitions should reflect throughput and replay needs.
-
-- **Flink fault tolerance**
-  - Production jobs typically enable checkpointing and configure restart strategies.
-  - If checkpointing is enabled and sinks participate correctly, Flink can recover and resume from the last successful checkpoint.
-
-- **Sinks (Postgres / MinIO)**
-  - Network/database/object-store outages are expected; sinks should use retries with bounded backoff and clear failure modes.
-  - To avoid duplicates under retries/restarts, make writes idempotent where possible:
-    - Postgres: use a unique constraint on `id` and insert with upsert semantics.
-    - MinIO: object keys derived from event `id` are naturally idempotent (overwrite is safe if content is deterministic).
-
-- **Poison messages and DLQ**
-  - For unprocessable events (bad schema, broken URL, unexpected payload), a common pattern is to route failures to a "dead-letter" topic/stream with the error reason, instead of crashing the job.
+See [`flink/PIPELINE_FLOW.md`](flink/PIPELINE_FLOW.md) for the per-failure-mode inventory.

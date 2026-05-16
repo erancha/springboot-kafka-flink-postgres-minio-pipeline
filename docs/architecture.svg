@@ -82,7 +82,7 @@
   <text x="546.909" y="407.792" class="alabel" fill="#e67e22" style="white-space: pre; font-size: 10px;">5-min counts</text>
   <rect x="93.751" y="440" width="212.386" height="88.655" class="sink" rx="5" style=""/>
   <text x="197" y="463" class="box-title" text-anchor="middle" style="white-space: pre;">MinIO</text>
-  <text x="197" y="480" class="sub" text-anchor="middle" style="white-space: pre;">S3-compatible · Ports 9000/9001</text>
+  <text x="197" y="480" class="sub" text-anchor="middle" style="white-space: pre;">S3-compatible · Ports 9010/9011</text>
   <text class="sub" style="text-anchor: middle; white-space: pre;"><tspan x="197" y="496">Bucket: </tspan><tspan style="font-weight: 700;">images</tspan></text>
   <text x="197" y="512" class="sub" text-anchor="middle" style="white-space: pre;">Key: images/{YYYY-MM-DD}/{uuid}.ext</text>
   <rect x="360" y="440" width="260" height="130" class="sink" rx="5"/>
@@ -90,7 +90,7 @@
   <text x="490" y="480" class="sub" text-anchor="middle" style="white-space: pre;">db: warehouse</text>
   <text class="sub" style="font-weight: 700; text-anchor: middle; white-space: pre;" x="434.061" y="496.528">processed_events</text>
   <text x="490" y="514" class="sub" text-anchor="middle" style="white-space: pre;">(IMAGE rows include imageObjectKey ref)</text>
-  <text class="sub" style="font-weight: 700; text-anchor: middle; white-space: pre;" x="442.893" y="541.041">event_type_count_5m</text>
+  <text class="sub" style="font-weight: 700; text-anchor: middle; white-space: pre;" x="442.893" y="541.041">event_type_counts_5m</text>
   <text x="491.472" y="557.777" class="sub" text-anchor="middle" style="white-space: pre; font-size: 11px;">(5-min window aggregates per eventType)</text>
   <path d="M 620 505 L 685 505" stroke="#27ae60" stroke-width="2" fill="none" marker-end="url(#a-green)"/>
   <text x="623" y="498" class="sub" fill="#27ae60" style="white-space: pre;">reads</text>

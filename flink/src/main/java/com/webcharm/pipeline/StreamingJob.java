@@ -14,7 +14,9 @@ import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.serialization.SerializationSchema;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
@@ -22,6 +24,7 @@ import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
@@ -43,12 +46,35 @@ public class StreamingJob {
     StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.enableCheckpointing(10_000);
 
+    // Retry indefinitely with exponential back-off (5 s → 10 min); let Flink HA
+    // manage job-level failover rather than giving up after N attempts.
+    env.setRestartStrategy(RestartStrategies.exponentialDelayRestart(
+        Time.seconds(5),
+        Time.minutes(10),
+        2.0,
+        Time.minutes(10),
+        0.1));
+
+    CheckpointConfig ckpt = env.getCheckpointConfig();
+    // Ensure at least 5 s idle between checkpoints to reduce back-pressure.
+    ckpt.setMinPauseBetweenCheckpoints(5_000);
+    // Abort a checkpoint that does not complete within 60 s.
+    ckpt.setCheckpointTimeout(60_000);
+    // Disallow overlapping checkpoints; one in-flight at a time.
+    ckpt.setMaxConcurrentCheckpoints(1);
+    // Keep the last checkpoint on disk when the job is cancelled so recovery is possible.
+    ckpt.setExternalizedCheckpointCleanup(
+        CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+
     KafkaSource<String> source = KafkaSource.<String>builder()
         .setBootstrapServers(kafkaBootstrap)
         .setTopics(kafkaTopic)
         .setGroupId("flink-processor")
         .setStartingOffsets(OffsetsInitializer.earliest())
         .setValueOnlyDeserializer(new SimpleStringSchema())
+        // Disable Kafka auto-commit; offsets are committed only when a Flink checkpoint succeeds,
+        // so the committed offset reflects exactly what has been durably processed.
+        .setProperty("enable.auto.commit", "false")
         .build();
 
     // noWatermarks() here is intentional: the real strategy is assigned on the typed stream below,

@@ -12,3 +12,4 @@ org/
 *.local
 !.env.example
 flink/**/*.class
+docs/todo.md
