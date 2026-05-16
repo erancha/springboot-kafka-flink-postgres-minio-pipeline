@@ -7,10 +7,10 @@
 This project is a local, Docker Compose–based real-time data pipeline:
 
 - UI (React) sends events to the API
-- API (Spring Boot) validates requests and publishes JSON events to Kafka
+- API (Spring Boot) validates, normalizes, and publishes JSON events to Kafka
 - Flink consumes Kafka events and processes them:
   - `IMAGE` events are stored in MinIO at `images/{date}/{id}.jpg`
-  - `DATA` events are cleaned/normalized and stored in Postgres (`processed_events`)
+  - `DATA` events are stored in Postgres (`processed_events`)
 
 ## Architecture
 
@@ -18,7 +18,7 @@ This project is a local, Docker Compose–based real-time data pipeline:
 
 - **frontend**: React + Vite built and served via Nginx
   - URL: http://localhost:3030
-- **backend**: Spring Boot API that [receives](backend/src/main/java/com/webcharm/backend/api/EventController.java) requests, [validates](backend/src/main/java/com/webcharm/backend/model/EventRequest.java) input, and [publishes](backend/src/main/java/com/webcharm/backend/kafka/EventProducer.java) events to Kafka
+- **backend**: Spring Boot API that [receives](backend/src/main/java/com/webcharm/backend/api/EventController.java) requests, [validates and normalizes](backend/src/main/java/com/webcharm/backend/model/EventRequest.java) input (e.g. `TEXT` → `DATA`), and [publishes](backend/src/main/java/com/webcharm/backend/kafka/EventProducer.java) events to Kafka
   - URL: http://localhost:8030
 - **kafka**: Kafka (KRaft mode, i.e. no ZooKeeper) + Kafka UI
   - URL: http://localhost:8088
@@ -52,7 +52,7 @@ chmod +x scripts/*.sh
 Then:
 
 - Open UI at http://localhost:3030
-- Send `DATA` or `IMAGE` events
+- Send `DATA`, `TEXT`, or `IMAGE` events (`TEXT` is normalized to `DATA`)
 
 Additional commands:
 
@@ -77,7 +77,7 @@ mvn -f flink/pom.xml test
 ```
 
 - `ParseEventFunction` — JSON parsing and DLQ side-output routing for bad payloads
-- `MinioUploadFunction` — SSRF URL-validation, statObject existence guard, DLQ routing, HTTP response-size cap, fetch retry logic
+- `MinioUploadFunction` — statObject existence guard, DLQ routing, HTTP response-size cap, fetch retry logic
 - `PostgresProcessedEventWriter` — JDBC parameter binding and error semantics via a mock `Connection`
 - `EventProducer` (backend) — Kafka publish and error handling; run via `mvn -f backend/pom.xml test`
 - `MinioUploadService` (backend) — upload path and exception wrapping; run via `mvn -f backend/pom.xml test`
@@ -164,10 +164,11 @@ Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is 
   - You want independent scaling/quotas/ACLs per event type (e.g. high-volume `IMAGE` vs low-volume `DATA`).
   - Different teams/consumers own different event streams and you want isolation.
 - The Kafka partition key is the event `id` (UUID) so all retries/duplicates for the same logical event are consistently routed to the same partition, and ordering is preserved for that key. Across different ids, ordering is intentionally not guaranteed (to allow parallelism).
-- Backend validation vs Flink validation:
-  - The backend validates request structure and basic constraints (e.g. required fields like `eventType`) before publishing.
-  - The backend can also do lightweight checks for `IMAGE` URLs (e.g. non-empty, valid URL syntax, allowed schemes), but it should avoid heavy validation (fetching the URL, checking content-type/size) because that adds latency, can be flaky, and couples ingestion to external availability.
-  - Flink is responsible for runtime validation/handling during processing (e.g. attempting to fetch the image, dealing with HTTP failures/timeouts, and deciding whether to drop/route to a DLQ if you add one).
+- Backend validation and normalization:
+  - The backend validates request structure and basic constraints (e.g. required fields, allowed `eventType` values) before publishing.
+  - It normalizes `eventType`: `TEXT` is accepted as an alias for `DATA` and rewritten before the event reaches Kafka, so downstream consumers only ever see `DATA` or `IMAGE`.
+  - For `IMAGE` URL events, the backend enforces an SSRF allowlist (`IMAGE_URL_ALLOWED_HOSTS`) at ingestion time, rejecting disallowed hosts with 403 before the event is published. Heavy validation (fetching the URL, checking content-type/size) is left to Flink to avoid adding latency at the ingestion boundary.
+  - Flink is responsible for runtime processing: fetching the image, dealing with HTTP failures/timeouts, and routing failures to the DLQ.
 - The Flink job uses routing based on `eventType` and writes to two different sinks (Postgres for `DATA`, MinIO for `IMAGE`).
 - MinIO bucket `images` is created by `minio-init` on startup. (To browse stored images: see [Architecture](#architecture).)
 

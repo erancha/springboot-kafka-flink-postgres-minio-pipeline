@@ -18,7 +18,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
@@ -119,8 +118,6 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
       throw new IllegalStateException(
           "IMAGE event reached MinioUploadFunction with neither imageUrl nor imageObjectKey: id=" + value.getId());
     }
-
-    validateImageUrl(url);
 
     String date = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
     String extension = guessExtensionFromUrl(url);
@@ -234,44 +231,6 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
         return false;
       }
       throw e;
-    }
-  }
-
-  /**
-   * Guards against SSRF by rejecting non-http(s) schemes and, when IMAGE_URL_ALLOWED_HOSTS is
-   * set, any host not in the comma-separated allowlist.
-   *
-   * @param rawUrl the imageUrl value from the event
-   * @throws IllegalArgumentException if the URL is malformed, uses a disallowed scheme, has no
-   *         host, or the host is not in the allowlist
-   */
-  static void validateImageUrl(String rawUrl) {
-    validateImageUrl(rawUrl, EnvConfig.env("IMAGE_URL_ALLOWED_HOSTS", ""));
-  }
-
-  /** Package-private overload used by tests to inject the allowlist without env-var manipulation. */
-  static void validateImageUrl(String rawUrl, String allowedHosts) {
-    URI uri;
-    try {
-      uri = URI.create(rawUrl);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("imageUrl is not a valid URI: " + rawUrl, e);
-    }
-    String scheme = uri.getScheme();
-    if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
-      throw new IllegalArgumentException("imageUrl scheme not allowed: " + scheme);
-    }
-    String host = uri.getHost();
-    if (host == null || host.isBlank()) {
-      throw new IllegalArgumentException("imageUrl has no host");
-    }
-    if (!allowedHosts.isBlank()) {
-      boolean allowed = Arrays.stream(allowedHosts.split(","))
-          .map(String::trim)
-          .anyMatch(h -> h.equalsIgnoreCase(host));
-      if (!allowed) {
-        throw new IllegalArgumentException("imageUrl host not in allowlist: " + host);
-      }
     }
   }
 

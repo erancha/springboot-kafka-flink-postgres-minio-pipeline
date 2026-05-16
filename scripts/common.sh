@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 compose() {
-  (cd "$ROOT_DIR" && docker compose "$@")
+  local -a files=(-f "$ROOT_DIR/docker-compose.yml")
+  [[ -n "${COMPOSE_OVERRIDE:-}" ]] && files+=(-f "$COMPOSE_OVERRIDE")
+  (cd "$ROOT_DIR" && docker compose "${files[@]}" "$@")
 }
 
 require_docker() {

@@ -29,8 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Verifies validateImageUrl (SSRF guard), statObject existence guard, DLQ side-output routing,
- * HTTP response-size cap, and fetch retry logic.
+ * Verifies statObject existence guard, DLQ side-output routing, HTTP response-size cap,
+ * and fetch retry logic.
  */
 @ExtendWith(MockitoExtension.class)
 class MinioUploadFunctionTest {
@@ -82,42 +82,6 @@ class MinioUploadFunctionTest {
       };
       processElement(event, ctx, col);
     }
-  }
-
-  // ── validateImageUrl ──────────────────────────────────────────────────────
-
-  @Test
-  void validateImageUrl_validHttpUrl_doesNotThrow() {
-    assertDoesNotThrow(() -> MinioUploadFunction.validateImageUrl("http://example.com/img.jpg"));
-  }
-
-  @Test
-  void validateImageUrl_validHttpsUrl_doesNotThrow() {
-    assertDoesNotThrow(() -> MinioUploadFunction.validateImageUrl("https://example.com/img.jpg"));
-  }
-
-  @Test
-  void validateImageUrl_fileScheme_throwsIllegalArgument() {
-    assertThrows(IllegalArgumentException.class,
-        () -> MinioUploadFunction.validateImageUrl("file:///etc/passwd"));
-  }
-
-  @Test
-  void validateImageUrl_ftpScheme_throwsIllegalArgument() {
-    assertThrows(IllegalArgumentException.class,
-        () -> MinioUploadFunction.validateImageUrl("ftp://example.com/img.jpg"));
-  }
-
-  @Test
-  void validateImageUrl_noHost_throwsIllegalArgument() {
-    assertThrows(IllegalArgumentException.class,
-        () -> MinioUploadFunction.validateImageUrl("https:///img.jpg"));
-  }
-
-  @Test
-  void validateImageUrl_malformedUri_throwsIllegalArgument() {
-    assertThrows(IllegalArgumentException.class,
-        () -> MinioUploadFunction.validateImageUrl("not a url at all"));
   }
 
   // ── statObject existence guard ────────────────────────────────────────────
@@ -232,20 +196,6 @@ class MinioUploadFunctionTest {
     verify(minioClient, never()).putObject(any());
   }
 
-  // ── IMAGE_URL_ALLOWED_HOSTS allowlist ────────────────────────────────────
-
-  @Test
-  void validateImageUrl_hostInAllowlist_doesNotThrow() {
-    assertDoesNotThrow(() ->
-        MinioUploadFunction.validateImageUrl("https://cdn.example.com/img.jpg", "example.com,cdn.example.com"));
-  }
-
-  @Test
-  void validateImageUrl_hostNotInAllowlist_throwsIllegalArgument() {
-    assertThrows(IllegalArgumentException.class, () ->
-        MinioUploadFunction.validateImageUrl("https://blocked.com/img.jpg", "example.com"));
-  }
-
   // ── 5xx response triggers retry ───────────────────────────────────────────
 
   @Test
@@ -273,15 +223,6 @@ class MinioUploadFunctionTest {
   }
 
   // ── DLQ routing via processElement ───────────────────────────────────────
-
-  @Test
-  void processElement_invalidSchemeUrl_routesToDlq() throws Exception {
-    TestableFn fn = new TestableFn(minioClient, httpClient);
-    fn.run(urlEvent("file:///etc/passwd"));
-
-    assertEquals(1, fn.dlqCapture.size());
-    assertTrue(fn.mainCapture.isEmpty());
-  }
 
   @Test
   @SuppressWarnings("unchecked")

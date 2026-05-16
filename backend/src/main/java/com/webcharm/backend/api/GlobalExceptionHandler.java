@@ -5,6 +5,7 @@ import com.webcharm.backend.storage.ObjectStoreException;
 import java.io.IOException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -12,10 +13,22 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-  /** Returns 400 for rejected input (e.g. empty upload file). */
+  /** Returns 400 for rejected input (e.g. empty upload file, malformed URL). */
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<String> handleIllegalArgument(IllegalArgumentException ex) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+  }
+
+  /** Returns 400 when the request body cannot be parsed (e.g. unknown eventType enum value). */
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<String> handleNotReadable(HttpMessageNotReadableException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid request body: " + ex.getMostSpecificCause().getMessage());
+  }
+
+  /** Returns 403 when an imageUrl is rejected by the SSRF allowlist. */
+  @ExceptionHandler(SecurityException.class)
+  public ResponseEntity<String> handleSecurityException(SecurityException ex) {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ex.getMessage());
   }
 
   /** Returns 500 when reading the uploaded file bytes fails at the OS/stream level. */

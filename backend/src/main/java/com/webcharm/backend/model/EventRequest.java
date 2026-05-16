@@ -1,27 +1,24 @@
 package com.webcharm.backend.model;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 public class EventRequest {
-  @NotBlank
-  @Pattern(regexp = "DATA|IMAGE", message = "eventType must be DATA or IMAGE")
-  private String eventType;
+  @NotNull
+  private EventType eventType;
 
   private Map<String, Object> payload;
 
   private String imageUrl;
 
-  public String getEventType() {
+  public EventType getEventType() {
     return eventType;
   }
 
-  public void setEventType(String eventType) {
+  public void setEventType(EventType eventType) {
     this.eventType = eventType;
   }
 
@@ -41,10 +38,10 @@ public class EventRequest {
     this.imageUrl = imageUrl;
   }
 
-  public Map<String, Object> toEventMap(@NotNull UUID id, @NotNull Instant eventTime, @NotBlank String source) {
+  public Map<String, Object> toEventMap(@NotNull UUID id, @NotNull Instant eventTime, @NotNull String source) {
     Map<String, Object> event = new HashMap<>();
     event.put("id", id.toString());
-    event.put("eventType", eventType);
+    event.put("eventType", eventType.normalized());
     event.put("eventTime", eventTime.toString());
     event.put("source", source);
 

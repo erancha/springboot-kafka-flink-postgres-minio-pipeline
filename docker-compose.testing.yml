@@ -1,0 +1,4 @@
+services:
+  backend:
+    environment:
+      - IMAGE_URL_ALLOWED_HOSTS=picsum.photos

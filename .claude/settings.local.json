@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jar tf *)",
+      "Bash(javap -classpath ~/.m2/repository/org/apache/flink/flink-core/2.2.1/flink-core-2.2.1.jar org.apache.flink.configuration.RestartStrategyOptions)",
+      "Bash(./scripts/test.sh flink *)",
+      "Bash(./scripts/test.sh backend *)"
+    ]
+  }
+}

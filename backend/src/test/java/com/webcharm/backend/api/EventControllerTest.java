@@ -8,6 +8,7 @@ import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
@@ -24,10 +25,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Verifies HTTP routing and request validation for EventController.
+ * Verifies HTTP routing, request validation, and imageUrl SSRF guard for EventController.
  * Uses @WebMvcTest (web layer only). EventProducer and ImageUploadService are Mockito stubs.
+ * IMAGE_URL_ALLOWED_HOSTS is set to "cdn.example.com" so imageUrl tests can verify allowed vs blocked hosts.
  */
 @WebMvcTest(EventController.class)
+@TestPropertySource(properties = "IMAGE_URL_ALLOWED_HOSTS=cdn.example.com")
 class EventControllerTest {
 
     @Autowired MockMvc mvc;
@@ -42,6 +45,16 @@ class EventControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").exists())
             .andExpect(jsonPath("$.eventTime").exists());
+
+        verify(eventProducer).send(argThat(e -> "DATA".equals(e.get("eventType"))));
+    }
+
+    @Test
+    void publishEvent_textEventType_normalizedToDataAndPublished() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"TEXT\",\"payload\":{\"msg\":\"hello\"}}"))
+            .andExpect(status().isOk());
 
         verify(eventProducer).send(argThat(e -> "DATA".equals(e.get("eventType"))));
     }
@@ -128,5 +141,55 @@ class EventControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"eventType\":\"DATA\"}"))
             .andExpect(status().isServiceUnavailable());
+    }
+
+    // ── imageUrl SSRF guard ───────────────────────────────────────────────────
+
+    @Test
+    void publishEvent_imageEventWithAllowedHost_returns200() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"https://cdn.example.com/photo.jpg\"}"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void publishEvent_imageEventWithBlockedHost_returns403() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"https://blocked.com/photo.jpg\"}"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void publishEvent_imageEventWithFileScheme_returns400() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"file:///etc/passwd\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void publishEvent_imageEventWithFtpScheme_returns400() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"ftp://cdn.example.com/photo.jpg\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void publishEvent_imageEventWithMalformedUrl_returns400() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"not a valid url\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void publishEvent_imageEventWithNoImageUrl_returns200() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\"}"))
+            .andExpect(status().isOk());
     }
 }
