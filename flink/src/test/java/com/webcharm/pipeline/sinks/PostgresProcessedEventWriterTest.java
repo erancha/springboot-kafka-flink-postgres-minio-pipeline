@@ -39,7 +39,7 @@ class PostgresProcessedEventWriterTest {
     ProcessedEvent event = new ProcessedEvent(
         UUID.fromString("00000000-0000-0000-0000-000000000001"),
         "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
-        Map.of("key", "value"), null, null, null, null, LocalDate.of(2024, 1, 15));
+        Map.of("key", "value"), null, null, LocalDate.of(2024, 1, 15));
 
     writer.write(event, null);
 
@@ -52,7 +52,7 @@ class PostgresProcessedEventWriterTest {
     ProcessedEvent event = new ProcessedEvent(
         UUID.fromString("00000000-0000-0000-0000-000000000002"),
         "IMAGE", Instant.parse("2024-01-15T10:00:00Z"), "ui",
-        null, null, null, null, key, LocalDate.of(2024, 1, 15));
+        null, null, key, LocalDate.of(2024, 1, 15));
 
     writer.write(event, null);
 
@@ -67,7 +67,7 @@ class PostgresProcessedEventWriterTest {
     ProcessedEvent event = new ProcessedEvent(
         UUID.fromString("00000000-0000-0000-0000-000000000003"),
         "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
-        null, null, null, null, null, LocalDate.of(2024, 1, 15));
+        null, null, null, LocalDate.of(2024, 1, 15));
 
     assertDoesNotThrow(() -> writer.write(event, null));
   }

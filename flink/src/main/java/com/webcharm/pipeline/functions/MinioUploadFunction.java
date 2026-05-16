@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
-import java.util.Base64;
 import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
@@ -28,14 +27,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * ProcessFunction that uploads the image payload to MinIO and replaces the binary fields with the resulting object key.
- * Follows SRP: responsible for MinIO upload only; the Postgres write is handled separately by PostgresProcessedEventSink.
- * Upload and decode failures are routed to UPLOAD_ERROR_TAG (side output) as DlqRecords so a bad event or transient MinIO error does not trigger a Flink job restart and Kafka replay.
- * Binary payload is cleared before any stateful operator to keep checkpoint state small.
+ * Fetches the image at imageUrl, uploads it to MinIO, and replaces imageUrl with the resulting
+ * imageObjectKey. Events that already carry an imageObjectKey (file-upload path) pass through
+ * unchanged. Upload and fetch failures are routed to UPLOAD_ERROR_TAG instead of crashing the job.
  */
 public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, ProcessedEvent> {
 
-  /** Side-output tag for events that fail MinIO upload or image decoding. */
+  /** Side-output tag for events that fail MinIO upload or image fetching. */
   public static final OutputTag<DlqRecord> UPLOAD_ERROR_TAG = new OutputTag<DlqRecord>("minio-upload-error") {
   };
 
@@ -76,8 +74,8 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
   }
 
   /**
-   * Routes the event through upload(). On any exception, emits a DlqRecord to UPLOAD_ERROR_TAG instead of propagating, 
-   * thus preventing job restart on transient MinIO errors or malformed payloads.
+   * Routes the event through upload(). On any exception, emits a DlqRecord to UPLOAD_ERROR_TAG
+   * instead of propagating, thus preventing job restart on transient MinIO errors or bad URLs.
    */
   @Override
   public void processElement(ProcessedEvent value, Context ctx, Collector<ProcessedEvent> out) {
@@ -99,41 +97,44 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
   }
 
   /**
-   * Fetches or decodes the image, uploads it to MinIO, then returns the same event with the binary fields cleared and imageObjectKey populated. 
-   * The object key is derived solely from event fields (id and imageContentType), making it deterministic across replays.
-   * For URL-sourced images, a statObject existence check is performed before fetching — if the object is already present the fetch and upload are skipped, 
-   * making the URL path idempotent under Flink at-least-once replay.
+   * Fetches the image at imageUrl, uploads it to MinIO, then returns the event with imageUrl
+   * cleared and imageObjectKey set. Events that already carry an imageObjectKey pass through
+   * unchanged. For URL-sourced images a statObject existence check is performed first — if the
+   * object is already present the fetch and upload are skipped, making the path idempotent under
+   * Flink at-least-once replay.
    *
    * @param value the ProcessedEvent deserialized from the Kafka events topic
-   * @return the event with imageBase64 and imageUrl nulled out and imageObjectKey set;
-   *         returned unchanged if neither image field is present
+   * @return the event with imageUrl nulled and imageObjectKey set, or unchanged if already keyed
    */
   ProcessedEvent upload(ProcessedEvent value) throws Exception {
-    String bucket = EnvConfig.env("MINIO_BUCKET", "images");
-    String contentType = (value.getImageContentType() == null || value.getImageContentType().isBlank())
-        ? "image/jpeg"
-        : value.getImageContentType();
-
-    String date = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
-    String extension = guessExtension(contentType);
-    String objectKey = "images/" + date + "/" + value.getId() + extension;
-
-    byte[] bytes;
-    if (value.getImageBase64() != null && !value.getImageBase64().isBlank()) {
-      bytes = Base64.getDecoder().decode(value.getImageBase64());
-    } else if (value.getImageUrl() != null && !value.getImageUrl().isBlank()) {
-      validateImageUrl(value.getImageUrl());
-      if (objectExists(bucket, objectKey)) {
-        log.debug("Skipping upload — object already exists: key={}", objectKey);
-        value.setImageObjectKey(objectKey);
-        value.setImageUrl(null);
-        return value;
-      }
-      bytes = fetchWithRetry(value.getImageUrl());
-    } else {
-      log.warn("IMAGE event id={} has no imageBase64 or imageUrl — skipping upload", value.getId());
+    // File-upload path: backend already set the key before Kafka.
+    if (value.getImageObjectKey() != null) {
       return value;
     }
+
+    String bucket = EnvConfig.env("MINIO_BUCKET", "images");
+    String url = value.getImageUrl();
+
+    if (url == null || url.isBlank()) {
+      throw new IllegalStateException(
+          "IMAGE event reached MinioUploadFunction with neither imageUrl nor imageObjectKey: id=" + value.getId());
+    }
+
+    validateImageUrl(url);
+
+    String date = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
+    String extension = guessExtensionFromUrl(url);
+    String objectKey = "images/" + date + "/" + value.getId() + extension;
+
+    if (objectExists(bucket, objectKey)) {
+      log.debug("Skipping upload — object already exists: key={}", objectKey);
+      value.setImageObjectKey(objectKey);
+      value.setImageUrl(null);
+      return value;
+    }
+
+    byte[] bytes = fetchWithRetry(url);
+    String contentType = guessContentType(extension);
 
     try (ByteArrayInputStream in = new ByteArrayInputStream(bytes)) {
       minio.putObject(
@@ -146,7 +147,6 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
     log.debug("Uploaded image: key={}", objectKey);
 
     value.setImageObjectKey(objectKey);
-    value.setImageBase64(null);
     value.setImageUrl(null);
     return value;
   }
@@ -240,6 +240,11 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
    *         host, or the host is not in the allowlist
    */
   static void validateImageUrl(String rawUrl) {
+    validateImageUrl(rawUrl, EnvConfig.env("IMAGE_URL_ALLOWED_HOSTS", ""));
+  }
+
+  /** Package-private overload used by tests to inject the allowlist without env-var manipulation. */
+  static void validateImageUrl(String rawUrl, String allowedHosts) {
     URI uri;
     try {
       uri = URI.create(rawUrl);
@@ -254,7 +259,6 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
     if (host == null || host.isBlank()) {
       throw new IllegalArgumentException("imageUrl has no host");
     }
-    String allowedHosts = EnvConfig.env("IMAGE_URL_ALLOWED_HOSTS", "");
     if (!allowedHosts.isBlank()) {
       boolean allowed = Arrays.stream(allowedHosts.split(","))
           .map(String::trim)
@@ -266,19 +270,33 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
   }
 
   /**
-   * Maps a MIME content-type string to a file extension. Defaults to .jpg for unrecognised types.
+   * Derives a file extension from the URL path. Defaults to .jpg for unrecognised extensions.
    *
-   * @param contentType the MIME type, e.g. "image/png"
+   * @param url the image URL
    * @return ".png", ".webp", ".gif", or ".jpg"
    */
-  private static String guessExtension(String contentType) {
-    String ct = contentType == null ? "" : contentType.toLowerCase();
-    if (ct.contains("png"))
-      return ".png";
-    if (ct.contains("webp"))
-      return ".webp";
-    if (ct.contains("gif"))
-      return ".gif";
+  private static String guessExtensionFromUrl(String url) {
+    try {
+      String path = java.net.URI.create(url).getPath().toLowerCase();
+      if (path.endsWith(".png"))  return ".png";
+      if (path.endsWith(".webp")) return ".webp";
+      if (path.endsWith(".gif"))  return ".gif";
+    } catch (Exception ignored) {}
     return ".jpg";
+  }
+
+  /**
+   * Maps a file extension to its MIME content-type. Defaults to image/jpeg for unknown extensions.
+   *
+   * @param extension the file extension, e.g. ".png"
+   * @return the corresponding MIME type string
+   */
+  private static String guessContentType(String extension) {
+    return switch (extension) {
+      case ".png"  -> "image/png";
+      case ".webp" -> "image/webp";
+      case ".gif"  -> "image/gif";
+      default      -> "image/jpeg";
+    };
   }
 }

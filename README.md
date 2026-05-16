@@ -22,10 +22,10 @@ This project is a local, Docker Compose–based real-time data pipeline:
   - URL: http://localhost:8030
 - **kafka**: Kafka (KRaft mode, i.e. no ZooKeeper) + Kafka UI
   - URL: http://localhost:8088
-- **flink**: Flink JobManager ([docker-compose.yml#L125-L147](docker-compose.yml#L125-L147)) / TaskManager ([docker-compose.yml#L148-L160](docker-compose.yml#L148-L160)) plus job submitter ([docker-compose.yml#L161-L186](docker-compose.yml#L161-L186)) that runs the streaming job ([StreamingJob.java](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java), built via [flink/pom.xml](flink/pom.xml))
-  - URL: http://localhost:8081
+- **flink**: Flink JobManager / TaskManager plus job submitter ([docker-compose.yml](docker-compose.yml)) that runs the streaming job ([StreamingJob.java](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java), built via [flink/pom.xml](flink/pom.xml))
+  - URL: http://localhost:8081 (port commented out by default — uncomment `ports` in docker-compose.yml to expose)
 - **minio**: local S3-compatible object storage
-  - Console: http://localhost:9001 (user: `minio`, pass: `minio123`)
+  - Console: http://localhost:9011 (user: `minio`, pass: `minio123`)
 - **postgres**: analytics database simulating a data warehouse
   - Conn: localhost:5432 (db: `warehouse`, user: `postgres`, pass: `postgres`)
 - **grafana**: dashboards for Postgres analytics (pre-provisioned)
@@ -79,38 +79,42 @@ mvn -f flink/pom.xml test
 - `ParseEventFunction` — JSON parsing and DLQ side-output routing for bad payloads
 - `MinioUploadFunction` — SSRF URL-validation, statObject existence guard, DLQ routing, HTTP response-size cap, fetch retry logic
 - `PostgresProcessedEventWriter` — JDBC parameter binding and error semantics via a mock `Connection`
-- `EventProducer` (backend) — Mockito tests; run via `mvn -f backend/pom.xml test`
+- `EventProducer` (backend) — Kafka publish and error handling; run via `mvn -f backend/pom.xml test`
+- `MinioUploadService` (backend) — upload path and exception wrapping; run via `mvn -f backend/pom.xml test`
 
 ### Component tests — no Docker, but load a framework or browser context
 
-**Backend** (~20 sec, 5 tests):
+**Backend** (~35 sec):
 
 ```bash
 mvn -f backend/pom.xml test
 ```
 
-`EventController` — 5 Spring MockMvc tests. Loads the web layer (controller + validation) but mocks Kafka; no real database or broker.
+`EventController` — Spring MockMvc tests. Loads the web layer (controller + validation) but mocks Kafka and MinIO; no real database or broker.
 
 > Slower than unit tests because Spring builds a partial application context.
 
-**Frontend** (~50 sec, 5 tests):
+**Frontend** (~50 sec):
 
 ```bash
 cd frontend && npm test && cd ..   # single run
 cd frontend && npm run test:watch  # watch mode (re-runs on save)
 ```
 
-Renders the React `App` component inside jsdom (a simulated browser). 3 tests for submit-gate logic (`canSubmit`), 2 for `submit()` error handling.
+Renders the React `App` component inside jsdom (a simulated browser). Tests cover submit-gate logic (`canSubmit`) and `submit()` error handling.
 
 > Slow because jsdom initialisation takes ~50 sec on first run.
 
-### Integration tests — require Docker (~30–40 sec, 3 tests)
+### Integration tests — require Docker (~60 sec)
 
 ```bash
 mvn -f flink/pom.xml verify
 ```
 
-`PostgresProcessedEventWriterIT` — Testcontainers starts a throwaway `postgres:16` container (not the application stack) solely for the test, then tears it down automatically. Verifies the upsert SQL, JSONB handling, and `ON CONFLICT` deduplication against a live database. Also reruns all 12 Flink unit tests.
+- `PostgresProcessedEventWriterIT` — Testcontainers starts a throwaway `postgres:16` container (not the application stack) solely for the test, then tears it down automatically. Verifies the upsert SQL, JSONB handling, and `ON CONFLICT` deduplication against a live database.
+- `StreamingJobIT` — runs the windowed count pipeline in a Flink mini-cluster (in-process, no Docker) against a bounded source and asserts output records.
+
+Also reruns all Flink unit tests.
 
 > First run pulls the `postgres:16` Docker image (~150 MB).
 

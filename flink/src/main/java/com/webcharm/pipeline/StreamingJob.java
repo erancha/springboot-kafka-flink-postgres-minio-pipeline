@@ -75,8 +75,8 @@ public class StreamingJob {
                 .withIdleness(Duration.ofMinutes(1)))
         .name("event-time-watermarks");
 
-    // IMAGE path: upload to MinIO (clears base64/url, sets imageObjectKey), then write to Postgres.
-    // Upload/decode failures go to the DLQ side output instead of crashing the operator.
+    // IMAGE path: upload to MinIO (sets imageObjectKey, clears imageUrl), then write to Postgres.
+    // Upload failures go to the DLQ side output instead of crashing the operator.
     SingleOutputStreamOperator<ProcessedEvent> uploadedImages = processedWithWatermarks
         .filter(e -> "IMAGE".equals(e.getEventType()))
         .process(new MinioUploadFunction())
@@ -96,8 +96,7 @@ public class StreamingJob {
         .sinkTo(new PostgresProcessedEventSink())
         .name("data-to-postgres");
 
-    // Strip all binary/payload fields before keying and windowing: imageBase64 can be several MB and
-    // would be serialized into every checkpoint snapshot for each in-flight event in the window.
+    // Strip all payload fields before keying and windowing to keep checkpoint state small.
     buildWindowedCounts(processedWithWatermarks)
         .sinkTo(new PostgresEventTypeCount5mSink())
         .name("counts-5m-to-postgres");
@@ -116,7 +115,7 @@ public class StreamingJob {
     return withWatermarks
         .map(e -> new ProcessedEvent(
             e.getId(), e.getEventType(), e.getEventTime(), e.getSource(),
-            null, null, null, null, null, e.getDate()))
+            null, null, null, e.getDate()))
         .name("strip-for-window")
         .keyBy(ProcessedEvent::getEventType)
         .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))

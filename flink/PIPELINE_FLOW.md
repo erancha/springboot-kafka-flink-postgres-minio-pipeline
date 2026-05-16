@@ -29,9 +29,9 @@ Inventory of every failure mode in the pipeline today, the gap vs. a sustainable
 
 | # | Failure                                         | Class           | Current behavior | Gap                       | New behavior                                                                               |
 |---|-------------------------------------------------|-----------------|------------------|---------------------------|--------------------------------------------------------------------------------------------|
-| 6 | Constraint violation / invalid JSONB            | Permanent       | Swallowed        | Data loss                 | DLQ                                                                                        |
-| 7 | Connection timeout / refused / deadlock         | Transient       | Swallowed        | Data loss; no retry       | In-operator retry with bounded backoff (e.g. 3 attempts: 1s/2s/4s) → re-throw if exhausted |
-| 8 | Auth failure / schema mismatch (missing column) | Infra misconfig | Swallowed        | Data loss; silent failure | `log.error(...)` + re-throw immediately                                                    |
+| 6 | Constraint violation / invalid JSONB            | Permanent       | Logged and swallowed | Data loss                 | DLQ                                                                                        |
+| 7 | Connection timeout / refused / deadlock         | Transient       | Logged and swallowed | Data loss; no retry       | In-operator retry with bounded backoff (e.g. 3 attempts: 1s/2s/4s) → re-throw if exhausted |
+| 8 | Auth failure / schema mismatch (missing column) | Infra misconfig | Logged and swallowed | Data loss; no restart     | `log.error(...)` + re-throw immediately                                                    |
 
 ### Cross-cutting
 

@@ -33,16 +33,29 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
-  /** Parses the raw JSON string; on any parse failure emits a DlqRecord to PARSE_ERROR_TAG instead of propagating the exception. */
+  /**
+   * Parses the raw JSON string; routes IMAGE events with neither imageUrl nor imageObjectKey to
+   * PARSE_ERROR_TAG; on any parse failure emits a DlqRecord to PARSE_ERROR_TAG instead of
+   * propagating the exception.
+   */
   @Override
   public void processElement(String value, Context ctx, Collector<ProcessedEvent> out) {
     try {
-      out.collect(parse(value));
+      ProcessedEvent event = parse(value);
+      if ("IMAGE".equals(event.getEventType())
+          && event.getImageUrl() == null
+          && event.getImageObjectKey() == null) {
+        ctx.output(PARSE_ERROR_TAG,
+            new DlqRecord(value, "IMAGE event has neither imageUrl nor imageObjectKey", Instant.now()));
+        return;
+      }
+      out.collect(event);
     } catch (Exception e) {
       ctx.output(PARSE_ERROR_TAG, new DlqRecord(value, e.getMessage(), Instant.now()));
     }
   }
 
+  /** Parses a raw JSON string into a ProcessedEvent, extracting all known fields including imageObjectKey. */
   @SuppressWarnings("unchecked")
   ProcessedEvent parse(String value) throws Exception {
     Map<String, Object> event = mapper.readValue(value, new TypeReference<Map<String, Object>>() {});
@@ -59,14 +72,13 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
     }
 
     String imageUrl = Optional.ofNullable(event.get("imageUrl")).map(Object::toString).orElse(null);
-    String imageBase64 = Optional.ofNullable(event.get("imageBase64")).map(Object::toString).orElse(null);
-    String imageContentType = Optional.ofNullable(event.get("imageContentType"))
-        .map(Object::toString).orElse("image/jpeg");
+    String imageObjectKey = Optional.ofNullable(event.get("imageObjectKey"))
+        .map(Object::toString).orElse(null);
 
     LocalDate date = eventTime.atZone(ZoneOffset.UTC).toLocalDate();
 
     return new ProcessedEvent(
         UUID.fromString(id), eventType, eventTime, sourceName,
-        payload, imageUrl, imageBase64, imageContentType, null, date);
+        payload, imageUrl, imageObjectKey, date);
   }
 }

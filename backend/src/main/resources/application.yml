@@ -2,6 +2,10 @@ server:
   port: ${SERVER_PORT:8080}
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
   kafka:
     bootstrap-servers: ${KAFKA_HOST_LOCAL:localhost}:${KAFKA_PORT:9092}
     producer:
@@ -11,3 +15,9 @@ spring:
 app:
   kafka:
     topic: ${KAFKA_TOPIC:events}
+
+minio:
+  endpoint: http://${MINIO_HOST_LOCAL:localhost}:${MINIO_PORT:9000}
+  access-key: ${MINIO_ROOT_USER:minio}
+  secret-key: ${MINIO_ROOT_PASSWORD:minio123}
+  bucket: ${MINIO_BUCKET:images}

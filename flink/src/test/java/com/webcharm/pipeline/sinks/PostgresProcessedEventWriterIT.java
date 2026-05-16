@@ -69,7 +69,7 @@ class PostgresProcessedEventWriterIT {
     UUID id = UUID.fromString("00000000-0000-0000-0000-000000000001");
     ProcessedEvent event = new ProcessedEvent(
         id, "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
-        null, null, null, null, null, LocalDate.of(2024, 1, 15));
+        null, null, null, LocalDate.of(2024, 1, 15));
 
     writer.write(event, null);
 
@@ -87,7 +87,7 @@ class PostgresProcessedEventWriterIT {
     UUID id = UUID.fromString("00000000-0000-0000-0000-000000000002");
     ProcessedEvent event = new ProcessedEvent(
         id, "IMAGE", Instant.parse("2024-01-15T10:00:00Z"), "ui",
-        null, null, null, null, "images/2024-01-15/" + id + ".jpg", LocalDate.of(2024, 1, 15));
+        null, null, "images/2024-01-15/" + id + ".jpg", LocalDate.of(2024, 1, 15));
 
     writer.write(event, null);
 
@@ -104,10 +104,10 @@ class PostgresProcessedEventWriterIT {
     UUID id = UUID.fromString("00000000-0000-0000-0000-000000000003");
     ProcessedEvent first = new ProcessedEvent(
         id, "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
-        null, null, null, null, null, LocalDate.of(2024, 1, 15));
+        null, null, null, LocalDate.of(2024, 1, 15));
     ProcessedEvent second = new ProcessedEvent(
         id, "IMAGE", Instant.parse("2024-01-15T10:01:00Z"), "ui",
-        null, null, null, null, "images/key.jpg", LocalDate.of(2024, 1, 15));
+        null, null, "images/key.jpg", LocalDate.of(2024, 1, 15));
 
     writer.write(first, null);
     writer.write(second, null);

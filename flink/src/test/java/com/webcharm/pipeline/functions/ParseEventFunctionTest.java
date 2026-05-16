@@ -67,11 +67,10 @@ class ParseEventFunctionTest {
     assertEquals(Instant.parse("2024-01-15T10:00:00Z"), result.getEventTime());
     assertNotNull(result.getPayload());
     assertEquals("value", result.getPayload().get("key"));
-    assertNull(result.getImageBase64());
     assertNull(result.getImageUrl());
   }
 
-  /** An IMAGE event containing only imageUrl is parsed correctly; imageBase64 is null because it was absent from the input. */
+  /** An IMAGE event containing only imageUrl is parsed correctly; imageObjectKey is null because it was absent from the input. */
   @Test
   void map_imageEventWithUrl_parsesImageUrl() throws Exception {
     TestableFn fn = new TestableFn();
@@ -81,8 +80,7 @@ class ParseEventFunctionTest {
           "eventType": "IMAGE",
           "eventTime": "2024-01-15T10:00:00Z",
           "source": "ui",
-          "imageUrl": "https://example.com/photo.jpg",
-          "imageContentType": "image/jpeg"
+          "imageUrl": "https://example.com/photo.jpg"
         }
         """);
 
@@ -91,8 +89,7 @@ class ParseEventFunctionTest {
     ProcessedEvent result = fn.mainCapture.get(0);
     assertEquals("IMAGE", result.getEventType());
     assertEquals("https://example.com/photo.jpg", result.getImageUrl());
-    assertEquals("image/jpeg", result.getImageContentType());
-    assertNull(result.getImageBase64());
+    assertNull(result.getImageObjectKey());
   }
 
   /** Optional fields absent from the JSON default to "unknown" source, "image/jpeg" content type, and null payload. */
@@ -111,7 +108,6 @@ class ParseEventFunctionTest {
     assertTrue(fn.dlqCapture.isEmpty());
     ProcessedEvent result = fn.mainCapture.get(0);
     assertEquals("unknown", result.getSource());
-    assertEquals("image/jpeg", result.getImageContentType());
     assertNull(result.getPayload());
   }
 
@@ -166,5 +162,45 @@ class ParseEventFunctionTest {
 
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
+  }
+
+  /** An IMAGE event with imageObjectKey is parsed correctly; imageUrl is null because it was absent from the input. */
+  @Test
+  void map_imageEventWithObjectKey_parsesObjectKey() throws Exception {
+    TestableFn fn = new TestableFn();
+    fn.run("""
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "eventType": "IMAGE",
+          "eventTime": "2024-01-15T10:00:00Z",
+          "source": "ui",
+          "imageObjectKey": "images/2024-01-15/00000000-0000-0000-0000-000000000006.jpg"
+        }
+        """);
+
+    assertEquals(1, fn.mainCapture.size());
+    assertTrue(fn.dlqCapture.isEmpty());
+    ProcessedEvent result = fn.mainCapture.get(0);
+    assertEquals("IMAGE", result.getEventType());
+    assertEquals("images/2024-01-15/00000000-0000-0000-0000-000000000006.jpg",
+        result.getImageObjectKey());
+    assertNull(result.getImageUrl());
+  }
+
+  /** An IMAGE event with neither imageUrl nor imageObjectKey is routed to the DLQ. */
+  @Test
+  void processElement_imageEventNeitherUrlNorObjectKey_routesToDlq() throws Exception {
+    TestableFn fn = new TestableFn();
+    fn.run("""
+        {
+          "id": "00000000-0000-0000-0000-000000000007",
+          "eventType": "IMAGE",
+          "eventTime": "2024-01-15T10:00:00Z"
+        }
+        """);
+
+    assertEquals(1, fn.dlqCapture.size());
+    assertTrue(fn.mainCapture.isEmpty());
+    assertNotNull(fn.dlqCapture.get(0).error());
   }
 }

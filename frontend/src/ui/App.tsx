@@ -9,6 +9,7 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
+  const [uploadNotification, setUploadNotification] = useState<{ type: 'uploading' | 'success' | 'error'; message: string } | null>(null);
   const [sendCount, setSendCount] = useState<number>(1);
   const [delaySeconds, setDelaySeconds] = useState<number>(0);
 
@@ -31,18 +32,24 @@ export default function App() {
   async function submit() {
     setBusy(true);
     setResult('');
+    setUploadNotification(null);
     try {
       if (eventType === 'IMAGE' && file) {
         const fd = new FormData();
         fd.append('file', file);
 
+        setUploadNotification({ type: 'uploading', message: `Uploading ${file.name}…` });
         const resp = await fetch('/api/events/image-upload', {
           method: 'POST',
           body: fd,
         });
 
         const body = await resp.text();
-        if (!resp.ok) throw new Error(body);
+        if (!resp.ok) {
+          setUploadNotification({ type: 'error', message: `Upload failed: ${body}` });
+          throw new Error(body);
+        }
+        setUploadNotification({ type: 'success', message: `Uploaded successfully` });
         setResult(body);
         return;
       }
@@ -82,7 +89,7 @@ export default function App() {
         }
 
         if (delaySeconds > 0 && i < sendCount - 1) {
-          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+          await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
         }
       }
     } catch (e: any) {
@@ -94,7 +101,7 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: 'system-ui, Arial', padding: 24, maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ margin: 0 }}>Real-time Pipeline UI</h1>
+      <h1 style={{ margin: 0 }}>Real-time Pipeline UI - Tester</h1>
       <p style={{ color: '#444' }}>
         Submit <b>DATA</b> or <b>IMAGE</b> events. The backend publishes to Kafka; Flink processes into Postgres / MinIO.
       </p>
@@ -139,7 +146,7 @@ export default function App() {
         )}
 
         <button disabled={!canSubmit || busy} onClick={submit}>
-          {busy ? 'Sending…' : 'Send event'}
+          {busy ? (eventType === 'IMAGE' && file ? 'Uploading…' : 'Sending…') : (eventType === 'IMAGE' && file ? 'Upload & send' : 'Send event')}
         </button>
       </div>
 
@@ -164,10 +171,33 @@ export default function App() {
 
           <label style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontWeight: 600 }}>Upload file (optional)</div>
-            <input type='file' accept='image/*' onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input
+              type='file'
+              accept='image/*'
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null);
+                setUploadNotification(null);
+              }}
+            />
           </label>
 
-          <div style={{ color: '#555' }}>You can provide either URL or upload a file.</div>
+          <div style={{ color: '#555' }}>
+            {file ? <span>File will be uploaded when you click <b>Upload &amp; send</b>.</span> : 'You can provide either URL or upload a file.'}
+          </div>
+
+          {uploadNotification && (
+            <div
+              style={{
+                padding: '8px 12px',
+                borderRadius: 4,
+                fontWeight: 500,
+                background: uploadNotification.type === 'uploading' ? '#fff8e1' : uploadNotification.type === 'success' ? '#e8f5e9' : '#fdecea',
+                color: uploadNotification.type === 'uploading' ? '#795548' : uploadNotification.type === 'success' ? '#2e7d32' : '#c62828',
+                border: `1px solid ${uploadNotification.type === 'uploading' ? '#ffe082' : uploadNotification.type === 'success' ? '#a5d6a7' : '#ef9a9a'}`,
+              }}>
+              {uploadNotification.message}
+            </div>
+          )}
         </div>
       )}
 

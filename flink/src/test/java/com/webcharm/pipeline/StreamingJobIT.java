@@ -67,7 +67,7 @@ class StreamingJobIT {
     private static ProcessedEvent event(String type, Instant time) {
         return new ProcessedEvent(
             UUID.randomUUID(), type, time, "test",
-            null, null, null, null, null,
+            null, null, null,
             time.atZone(ZoneOffset.UTC).toLocalDate());
     }
 }
