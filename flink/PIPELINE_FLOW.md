@@ -15,7 +15,7 @@ Inventory of every failure mode in the pipeline today, the gap vs. a sustainable
 | #   | Failure                                           | Class     | Current behavior | Gap              | New behavior                                           |
 | --- | ------------------------------------------------- | --------- | ---------------- | ---------------- | ------------------------------------------------------ |
 | 1   | Bad JSON / missing required field / bad timestamp | Permanent | DLQ              | -                | -                                                      |
-| 2   | Unknown `eventType` (not DATA/IMAGE)              | Permanent | Silently dropped | No observability | Drop + emit counter metric `flink.events.unknown_type` |
+| 2   | Unknown `eventType` (not DATA/IMAGE)              | n/a       | Cannot reach Flink — Spring Boot deserializes `eventType` into the `EventType` enum and rejects unknown values with HTTP 400 before publishing to Kafka. Flink is not the validation boundary for this failure. | - | - |
 
 ### MinIO upload stage (`MinioUploadFunction`)
 
