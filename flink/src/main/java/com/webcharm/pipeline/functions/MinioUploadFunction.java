@@ -66,7 +66,11 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
         .build();
     this.http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECS))
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        // NEVER: the host allowlist is enforced at the HTTP boundary (EventController.validateImageUrl),
+        // but the actual TCP connection is made here. With NORMAL, a 3xx from an allowlisted host
+        // could redirect to an internal endpoint (e.g. 169.254.169.254) and the socket would connect
+        // before any code re-validated the host. Redirects hit the non-2xx guard in fetch() → DLQ.
+        .followRedirects(HttpClient.Redirect.NEVER)
         .build();
     this.mapper = new ObjectMapper();
     log.info("MinioUploadFunction initialized: endpoint={}", endpoint);

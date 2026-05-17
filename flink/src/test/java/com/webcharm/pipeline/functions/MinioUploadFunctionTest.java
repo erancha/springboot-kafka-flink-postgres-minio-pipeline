@@ -30,7 +30,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Verifies statObject existence guard, DLQ side-output routing, HTTP response-size cap,
- * and fetch retry logic.
+ * fetch retry logic, and redirect blocking.
+ *
+ * Redirect blocking (SSRF): the backend allowlist validates imageUrl at the HTTP boundary, but
+ * the actual TCP connection is made here. With followRedirects(NORMAL) an attacker could submit
+ * an allowlisted URL that 302-redirects to an internal endpoint (e.g. 169.254.169.254); the
+ * socket would connect before any code re-validated the host. followRedirects(NEVER) ensures
+ * a 3xx is never followed — it hits the non-2xx guard in fetch() and is routed to the DLQ.
  */
 @ExtendWith(MockitoExtension.class)
 class MinioUploadFunctionTest {
@@ -261,6 +267,25 @@ class MinioUploadFunctionTest {
 
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
+  }
+
+  // ── redirect blocked ─────────────────────────────────────────────────────
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void upload_urlEvent_302Response_throwsIllegalState() throws Exception {
+    ErrorResponse errResp = mock(ErrorResponse.class);
+    when(errResp.code()).thenReturn("NoSuchKey");
+    ErrorResponseException notFound = new ErrorResponseException(errResp, null, "");
+    when(minioClient.statObject(any())).thenThrow(notFound);
+
+    HttpResponse<InputStream> redirect = mock(HttpResponse.class);
+    when(redirect.statusCode()).thenReturn(302);
+    doReturn(redirect).when(httpClient).send(any(), any());
+
+    assertThrows(IllegalStateException.class,
+        () -> new MinioUploadFunction(minioClient, httpClient)
+            .upload(urlEvent("https://cdn.example.com/photo.jpg")));
   }
 
   // ── extension detection ───────────────────────────────────────────────────
