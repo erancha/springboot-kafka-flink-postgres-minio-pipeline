@@ -2,6 +2,7 @@ package com.webcharm.pipeline.functions;
 
 import com.webcharm.pipeline.sinks.JdbcWriter;
 import com.webcharm.pipeline.sinks.PostgresProcessedEventWriter;
+import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.ProcessedEvent;
 
 /**
@@ -9,6 +10,11 @@ import com.webcharm.pipeline.types.ProcessedEvent;
  * Permanent failures cannot be fixed by checkpoint replay — routing to DLQ prevents infinite restart loops.
  */
 public class PostgresWriteFunction extends AbstractPostgresWriteFunction<ProcessedEvent> {
+
+  /** Builds a writer for the processed_events table, stamping the given stage on DLQ records. */
+  public PostgresWriteFunction(DlqStage stage) {
+    super(stage);
+  }
 
   /** Creates a writer that upserts into the processed_events table. */
   @Override

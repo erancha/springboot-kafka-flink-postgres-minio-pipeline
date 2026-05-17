@@ -1,6 +1,7 @@
 package com.webcharm.pipeline.functions;
 
 import com.webcharm.pipeline.types.DlqRecord;
+import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import org.apache.flink.api.common.functions.DefaultOpenContext;
 import org.apache.flink.streaming.api.TimerService;
@@ -219,6 +220,7 @@ class ParseEventFunctionTest {
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
     assertTrue(fn.dlqCapture.get(0).error().contains("unexpected eventType"));
+    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
   }
 
   /** A missing eventType field is treated as unexpected and routed to the DLQ. */

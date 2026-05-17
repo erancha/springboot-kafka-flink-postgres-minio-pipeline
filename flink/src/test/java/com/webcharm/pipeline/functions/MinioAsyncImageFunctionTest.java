@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import io.minio.MinioClient;
@@ -111,6 +112,7 @@ class MinioAsyncImageFunctionTest {
     assertFalse(r.isSuccess());
     assertFalse(r.isRetryable());
     assertNotNull(r.failure());
+    assertEquals(DlqStage.IMAGE_ENRICH, r.failure().stage());
   }
 
   @Test

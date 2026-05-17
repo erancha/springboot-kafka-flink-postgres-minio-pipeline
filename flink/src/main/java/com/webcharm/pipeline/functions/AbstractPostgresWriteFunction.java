@@ -3,6 +3,7 @@ package com.webcharm.pipeline.functions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webcharm.pipeline.sinks.PermanentJdbcException;
 import com.webcharm.pipeline.types.DlqRecord;
+import com.webcharm.pipeline.types.DlqStage;
 import java.io.IOException;
 import java.time.Instant;
 import com.webcharm.pipeline.sinks.JdbcWriter;
@@ -23,6 +24,12 @@ abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRe
 
   private transient JdbcWriter<T> writer;
   private transient ObjectMapper mapper;
+  private final DlqStage stage;
+
+  /** Records the pipeline stage stamped onto every DlqRecord this function emits. */
+  protected AbstractPostgresWriteFunction(DlqStage stage) {
+    this.stage = stage;
+  }
 
   /** Returns a new writer instance; called once per task slot during open(). */
   protected abstract JdbcWriter<T> createWriter();
@@ -48,7 +55,7 @@ abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRe
       writer.write(record);
     } catch (PermanentJdbcException e) {
       log.error("Permanent JDBC failure for {}, routing to DLQ: {}", logContextString(record), e.getMessage(), e);
-      out.collect(new DlqRecord(mapper.writeValueAsString(record), e.getMessage(), Instant.now()));
+      out.collect(new DlqRecord(stage, mapper.writeValueAsString(record), e.getMessage(), Instant.now()));
     }
   }
 

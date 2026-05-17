@@ -61,13 +61,14 @@ class ImagePipelineIT {
 
     SingleOutputStreamOperator<ProcessedEvent> main = StreamingJob.buildImagePipeline(source);
 
-    List<String> dlq = new ArrayList<>();
+    List<DlqRecord> dlq = new ArrayList<>();
     try (CloseableIterator<DlqRecord> it =
         main.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG).executeAndCollect()) {
-      it.forEachRemaining(d -> dlq.add(d.error()));
+      it.forEachRemaining(dlq::add);
     }
 
     assertEquals(1, dlq.size());
-    assertTrue(dlq.get(0).contains("neither imageUrl nor imageObjectKey"));
+    assertTrue(dlq.get(0).error().contains("neither imageUrl nor imageObjectKey"));
+    assertEquals(com.webcharm.pipeline.types.DlqStage.IMAGE_ENRICH, dlq.get(0).stage());
   }
 }

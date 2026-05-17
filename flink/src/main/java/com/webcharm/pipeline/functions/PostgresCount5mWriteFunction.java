@@ -2,6 +2,7 @@ package com.webcharm.pipeline.functions;
 
 import com.webcharm.pipeline.sinks.JdbcWriter;
 import com.webcharm.pipeline.sinks.PostgresEventTypeCount5mWriter;
+import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EventTypeCount5m;
 
 /**
@@ -9,6 +10,11 @@ import com.webcharm.pipeline.types.EventTypeCount5m;
  * Mirrors PostgresWriteFunction's fault-handling strategy for the windowed-counts path.
  */
 public class PostgresCount5mWriteFunction extends AbstractPostgresWriteFunction<EventTypeCount5m> {
+
+  /** Builds a writer for the event_type_counts_5m table, stamping the given stage on DLQ records. */
+  public PostgresCount5mWriteFunction(DlqStage stage) {
+    super(stage);
+  }
 
   /** Creates a writer that upserts into the event_type_counts_5m table. */
   @Override

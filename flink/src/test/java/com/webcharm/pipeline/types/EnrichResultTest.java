@@ -16,7 +16,7 @@ class EnrichResultTest {
   }
 
   private static DlqRecord dlq() {
-    return new DlqRecord("raw", "boom", Instant.now());
+    return new DlqRecord(DlqStage.IMAGE_ENRICH, "raw", "boom", Instant.now());
   }
 
   @Test

@@ -10,6 +10,7 @@ import com.webcharm.pipeline.functions.ParseEventFunction;
 import com.webcharm.pipeline.functions.PostgresCount5mWriteFunction;
 import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
+import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.EventTypeCount5m;
 import com.webcharm.pipeline.types.ProcessedEvent;
@@ -105,9 +106,9 @@ public class StreamingJob {
         .name("parse-json");
     // ===================================
 
-    parsedEvents.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG) // =========== unhappy path: unparseable messages (bad JSON, missing fields)
-        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
-        .name("parse-errors-to-dlq");
+    // =========== unhappy path: unparseable messages (bad JSON, missing fields) ===========
+    DataStream<DlqRecord> parseErrors =
+        parsedEvents.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG);
 
     // =========== happy path: stamp parsed events with event-time watermarks ===========
     DataStream<ProcessedEvent> timedEvents = parsedEvents
@@ -125,29 +126,35 @@ public class StreamingJob {
     SingleOutputStreamOperator<ProcessedEvent> imagePipeline = buildImagePipeline(
         timedEvents.filter(e -> "IMAGE".equals(e.getEventType())));
 
-    imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG) // =========== unhappy path: image fetch/upload failures or exhausted transient
-        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
-        .name("minio-errors-to-dlq");
+    // =========== unhappy path: image fetch/upload failures or exhausted transient ===========
+    DataStream<DlqRecord> minioErrors =
+        imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG);
 
-    imagePipeline
-        .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect; replay cannot fix a bad payload
-        .name("image-to-postgres")
-        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
-        .name("postgres-image-errors-to-dlq");
+    // Postgres write is a side effect; replay cannot fix a bad payload, so PermanentJdbcException
+    // is emitted as a DlqRecord on the main output rather than propagated.
+    DataStream<DlqRecord> imagePostgresErrors = imagePipeline
+        .process(new PostgresWriteFunction(DlqStage.IMAGE_POSTGRES))
+        .name("image-to-postgres");
 
-    timedEvents
+    DataStream<DlqRecord> dataPostgresErrors = timedEvents
         .filter(e -> "DATA".equals(e.getEventType()))
-        .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect
-        .name("data-to-postgres")
-        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
-        .name("postgres-data-errors-to-dlq");
+        .process(new PostgresWriteFunction(DlqStage.DATA_POSTGRES))
+        .name("data-to-postgres");
 
     // Payload fields are stripped before keying and windowing to keep checkpoint state small.
-    buildWindowedCounts(timedEvents)
-        .process(new PostgresCount5mWriteFunction()) // =========== happy path: Postgres write is a side effect
-        .name("counts-5m-to-postgres")
-        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
-        .name("postgres-count-errors-to-dlq");
+    DataStream<DlqRecord> countErrors = buildWindowedCounts(timedEvents)
+        .process(new PostgresCount5mWriteFunction(DlqStage.COUNT_POSTGRES))
+        .name("counts-5m-to-postgres");
+
+    // All dead-letter paths converge into one Kafka producer. union is type-safe (every input is
+    // DataStream<DlqRecord>) and behaviour-preserving: each record still reaches events-dlq, and
+    // its DlqStage carries the origin that the per-source sink names used to encode. A single
+    // sink couples DLQ backpressure across the five branches, but dead-letter volume is low by
+    // nature (only failures), so this is acceptable and is the standard pattern.
+    parseErrors
+        .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors)
+        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
+        .name("dlq-sink");
 
     log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
     executionEnv.execute("Kafka->Flink->(MinIO,Postgres)");
