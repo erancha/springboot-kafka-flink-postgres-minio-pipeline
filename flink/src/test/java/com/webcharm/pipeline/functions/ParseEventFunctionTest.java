@@ -203,4 +203,36 @@ class ParseEventFunctionTest {
     assertTrue(fn.mainCapture.isEmpty());
     assertNotNull(fn.dlqCapture.get(0).error());
   }
+
+  /** An eventType that is not DATA or IMAGE is routed to the DLQ and never reaches the main output. */
+  @Test
+  void processElement_invalidEventType_routesToDlq() throws Exception {
+    TestableFn fn = new TestableFn();
+    fn.run("""
+        {
+          "id": "00000000-0000-0000-0000-000000000008",
+          "eventType": "FOO",
+          "eventTime": "2024-01-15T10:00:00Z"
+        }
+        """);
+
+    assertEquals(1, fn.dlqCapture.size());
+    assertTrue(fn.mainCapture.isEmpty());
+    assertTrue(fn.dlqCapture.get(0).error().contains("unexpected eventType"));
+  }
+
+  /** A missing eventType field is treated as unexpected and routed to the DLQ. */
+  @Test
+  void processElement_missingEventType_routesToDlq() throws Exception {
+    TestableFn fn = new TestableFn();
+    fn.run("""
+        {
+          "id": "00000000-0000-0000-0000-000000000009",
+          "eventTime": "2024-01-15T10:00:00Z"
+        }
+        """);
+
+    assertEquals(1, fn.dlqCapture.size());
+    assertTrue(fn.mainCapture.isEmpty());
+  }
 }

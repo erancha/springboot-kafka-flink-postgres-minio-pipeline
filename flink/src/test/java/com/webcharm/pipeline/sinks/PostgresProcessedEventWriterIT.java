@@ -9,8 +9,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Instant;
@@ -118,5 +120,16 @@ class PostgresProcessedEventWriterIT {
       assertTrue(rs.next());
       assertEquals(1, rs.getInt(1));
     }
+  }
+
+  /** Asserts the prepared statement's query timeout is bounded, against a real Postgres connection rather than a mock. */
+  @Test
+  void preparedStatement_hasBoundedQueryTimeout() throws Exception {
+    // Reflectively reach the protected stmt on the base class to assert the bound is applied
+    // against a REAL Postgres connection (not a mock), proving the worst case is bounded.
+    Field f = JdbcWriterBase.class.getDeclaredField("stmt");
+    f.setAccessible(true);
+    PreparedStatement ps = (PreparedStatement) f.get(writer);
+    assertEquals(8, ps.getQueryTimeout()); // default JDBC_QUERY_TIMEOUT_SECS = 8
   }
 }

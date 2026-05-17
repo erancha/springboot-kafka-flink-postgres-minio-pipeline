@@ -15,12 +15,20 @@ import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Parses a raw Kafka JSON string into a ProcessedEvent. Malformed messages are emitted to
- * PARSE_ERROR_TAG (side output) as DlqRecords rather than crashing the task.
+ * Parses a raw Kafka JSON string into a ProcessedEvent. Malformed messages, and events whose
+ * eventType is not DATA or IMAGE, are emitted to PARSE_ERROR_TAG (side output) as DlqRecords
+ * rather than crashing the task.
  */
 public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> {
+
+  private static final Logger log = LoggerFactory.getLogger(ParseEventFunction.class);
+
+  /** Sentinel eventType for an event that is not DATA or IMAGE (invalid value or missing field). */
+  private static final String UNEXPECTED = "UNEXPECTED";
 
   public static final OutputTag<DlqRecord> PARSE_ERROR_TAG =
       new OutputTag<DlqRecord>("parse-error") {};
@@ -34,14 +42,22 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
   }
 
   /**
-   * Parses the raw JSON string; routes IMAGE events with neither imageUrl nor imageObjectKey to
-   * PARSE_ERROR_TAG; on any parse failure emits a DlqRecord to PARSE_ERROR_TAG instead of
-   * propagating the exception.
+   * Parses the raw JSON string and emits the event downstream. Routes to PARSE_ERROR_TAG: an
+   * eventType that is not DATA or IMAGE (also logged at error, since a valid backend cannot
+   * produce one), an IMAGE event with neither imageUrl nor imageObjectKey, and any parse failure.
    */
   @Override
   public void processElement(String value, Context ctx, Collector<ProcessedEvent> out) {
     try {
       ProcessedEvent event = parse(value);
+      if (UNEXPECTED.equals(event.getEventType())) {
+        log.error("Unexpected eventType (not DATA/IMAGE): the backend validates eventType as an "
+            + "enum and Kafka is private, so this indicates a non-backend producer or schema "
+            + "skew. Routing to DLQ.");
+        ctx.output(PARSE_ERROR_TAG,
+            new DlqRecord(value, "unexpected eventType (not DATA/IMAGE)", Instant.now()));
+        return;
+      }
       if ("IMAGE".equals(event.getEventType())
           && event.getImageUrl() == null
           && event.getImageObjectKey() == null) {
@@ -55,13 +71,18 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
     }
   }
 
-  /** Parses a raw JSON string into a ProcessedEvent, extracting all known fields including imageObjectKey. */
+  /**
+   * Parses a raw JSON string into a ProcessedEvent, extracting all known fields including
+   * imageObjectKey. An eventType that is not DATA or IMAGE - including a missing field - is
+   * folded to the UNEXPECTED sentinel.
+   */
   @SuppressWarnings("unchecked")
   ProcessedEvent parse(String value) throws Exception {
     Map<String, Object> event = mapper.readValue(value, new TypeReference<Map<String, Object>>() {});
 
     String id = String.valueOf(event.getOrDefault("id", UUID.randomUUID().toString()));
-    String eventType = String.valueOf(event.getOrDefault("eventType", "UNKNOWN")).toUpperCase();
+    String rawType = String.valueOf(event.getOrDefault("eventType", "")).toUpperCase();
+    String eventType = ("DATA".equals(rawType) || "IMAGE".equals(rawType)) ? rawType : UNEXPECTED;
     String eventTimeStr = String.valueOf(event.getOrDefault("eventTime", Instant.now().toString()));
     Instant eventTime = Instant.parse(eventTimeStr);
     String sourceName = String.valueOf(event.getOrDefault("source", "unknown"));

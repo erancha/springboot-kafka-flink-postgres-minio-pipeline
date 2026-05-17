@@ -4,11 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.config.EnvConfig;
+import com.webcharm.pipeline.functions.EnrichSplitFunction;
+import com.webcharm.pipeline.functions.MinioAsyncImageFunction;
 import com.webcharm.pipeline.functions.ParseEventFunction;
-import com.webcharm.pipeline.functions.MinioUploadFunction;
 import com.webcharm.pipeline.functions.PostgresCount5mWriteFunction;
 import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
+import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.EventTypeCount5m;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
@@ -23,23 +25,39 @@ import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.streaming.api.datastream.AsyncDataStream;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.async.AsyncRetryStrategy;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.util.retryable.AsyncRetryStrategies;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.stream.StreamSupport;
 
+/**
+ * Defines and runs the pipeline: parse Kafka events, route IMAGE through async MinIO
+ * enrichment and DATA straight to Postgres, pre-aggregate 5-minute per-type counts, and
+ * send every failure to the dead-letter Kafka topic.
+ */
 public class StreamingJob {
   private static final Logger log = LoggerFactory.getLogger(StreamingJob.class);
 
+  /** Runs startup pre-flight checks, then builds the job graph and submits it to the Flink runtime. */
   public static void main(String[] args) throws Exception {
+    // Fail fast on a misconfigured deployment before submitting the job.
+    PreflightChecks.run();
+
     String kafkaBootstrap = EnvConfig.env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
     String kafkaTopic = EnvConfig.env("KAFKA_TOPIC", "events");
     String dlqTopic = EnvConfig.env("KAFKA_DLQ_TOPIC", "events-dlq");
@@ -103,16 +121,14 @@ public class StreamingJob {
         .name("event-time-watermarks");
     // =====================================================================================
 
-    SingleOutputStreamOperator<ProcessedEvent> imageEvents = timedEvents
-        .filter(e -> "IMAGE".equals(e.getEventType()))
-        .process(new MinioUploadFunction()) // =========== happy path: IMAGE events with imageObjectKey set
-        .name("minio-upload");
+    SingleOutputStreamOperator<ProcessedEvent> imagePipeline = buildImagePipeline(
+        timedEvents.filter(e -> "IMAGE".equals(e.getEventType())));
 
-    imageEvents.getSideOutput(MinioUploadFunction.UPLOAD_ERROR_TAG) // =========== unhappy path: MinIO fetch/upload failures (unreachable URL, size cap, etc.)
+    imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG) // =========== unhappy path: image fetch/upload failures or exhausted transient
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("minio-errors-to-dlq");
 
-    imageEvents
+    imagePipeline
         .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect; replay cannot fix a bad payload
         .name("image-to-postgres")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
@@ -137,10 +153,8 @@ public class StreamingJob {
   }
 
   /**
-   * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time windows, 
-   * and emits one EventTypeCount5m per (type, window) pair when each window closes.
-   * Extracted as a package-private static method so StreamingJobIT can exercise it directly
-   * with a controlled bounded source — no Kafka or wall-clock waiting required.
+   * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time
+   * windows, and emits one EventTypeCount5m per (type, window) pair when each window closes.
    */
   static DataStream<EventTypeCount5m> buildWindowedCounts(DataStream<ProcessedEvent> withWatermarks) {
     return withWatermarks
@@ -163,6 +177,47 @@ public class StreamingJob {
           }
         })
         .name("count-by-type-5m");
+  }
+
+  /**
+   * Wires the IMAGE branch as a Flink async I/O operator (non-blocking fetch plus MinIO upload,
+   * framework-managed exponential-backoff retry on transient failures) followed by a non-blocking
+   * split. Returns the split operator whose main output is enriched events and whose
+   * EnrichSplitFunction.UPLOAD_ERROR_TAG side output carries DLQ records. The operator timeout
+   * is decoupled from the checkpoint timeout because the task thread never blocks.
+   */
+  static SingleOutputStreamOperator<ProcessedEvent> buildImagePipeline(
+      DataStream<ProcessedEvent> imageEvents) {
+
+    int capacity = EnvConfig.envInt("MINIO_ASYNC_CAPACITY", 100);
+    int timeoutSecs = EnvConfig.envInt("MINIO_ASYNC_TIMEOUT_SECS", 120);
+    int maxAttempts = EnvConfig.envInt("MINIO_ASYNC_MAX_ATTEMPTS", 3);
+
+    SerializablePredicate<Collection<EnrichResult>> retryable =
+        results -> results.stream().anyMatch(EnrichResult::isRetryable);
+    AsyncRetryStrategy<EnrichResult> retryStrategy =
+        new AsyncRetryStrategies.ExponentialBackoffDelayRetryStrategyBuilder<EnrichResult>(
+                maxAttempts, 1_000L, 4_000L, 2.0)
+            .ifResult(retryable)
+            .build();
+
+    SingleOutputStreamOperator<EnrichResult> enriched = AsyncDataStream.unorderedWaitWithRetry(
+            imageEvents,
+            new MinioAsyncImageFunction(),
+            timeoutSecs, TimeUnit.SECONDS,
+            capacity,
+            retryStrategy)
+        .name("minio-enrich-async");
+
+    return enriched
+        .process(new EnrichSplitFunction())
+        .name("enrich-split");
+  }
+
+  /**
+   * A Predicate that is also Serializable so Flink can ship it in the job graph.
+   */
+  private interface SerializablePredicate<T> extends Predicate<T>, Serializable {
   }
 
   /** Builds a KafkaSink that writes DlqRecords to the given topic. Each call returns a new instance. */

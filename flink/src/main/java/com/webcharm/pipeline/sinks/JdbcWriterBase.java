@@ -20,13 +20,13 @@ import org.slf4j.LoggerFactory;
  * stale due to TCP timeouts or Postgres idle-connection culling.
  *
  * Transient JDBC errors (connection reset, deadlock — SQLState 08xxx/40xxx/57xxx) are retried with
- * exponential backoff and a fresh connection before propagating as IOException. Permanent errors
- * (constraint violations, invalid JSONB — all other SQLStates) throw PermanentJdbcException
- * immediately so callers can route to a dead-letter queue without triggering Flink checkpoint replay.
+ * exponential backoff and a fresh connection, then propagate as IOException once the retry budget
+ * is exhausted. Permanent errors (constraint violations, invalid JSONB — all other SQLStates)
+ * throw PermanentJdbcException immediately.
  */
 abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
-  /** Operation that can throw SQLException, used as the unit of work passed to executeWithRetry. */
+  /** A unit of JDBC work that may throw SQLException. */
   @FunctionalInterface
   interface JdbcOperation {
     void execute() throws SQLException;
@@ -36,13 +36,16 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
   private static final long INITIAL_BACKOFF_MS = 1_000;
   private static final int BACKOFF_MULTIPLIER = 2;
-  private static final int MAX_RETRIES = 2; // retries after the first attempt
-  private static final int MAX_ATTEMPTS = MAX_RETRIES + 1;
+  // Bounded so the worst case (attempts x query timeout + reconnect + backoff) stays under the
+  // 60 s checkpoint timeout. Default 2 attempts, 8 s query/socket, 5 s connect, 8 s pool borrow.
+  private static final int MAX_ATTEMPTS = Math.max(1, EnvConfig.envInt("JDBC_MAX_ATTEMPTS", 2));
+  private static final int QUERY_TIMEOUT_SECS = EnvConfig.envInt("JDBC_QUERY_TIMEOUT_SECS", 8);
+  private static final int SOCKET_TIMEOUT_SECS = EnvConfig.envInt("JDBC_SOCKET_TIMEOUT_SECS", 8);
+  private static final int CONNECT_TIMEOUT_SECS = EnvConfig.envInt("JDBC_CONNECT_TIMEOUT_SECS", 5);
+  private static final int POOL_CONNECTION_TIMEOUT_MS =
+      EnvConfig.envInt("JDBC_POOL_CONNECTION_TIMEOUT_MS", 8_000);
 
-  /**
-   * Non-null in the production path (pool-backed connection).
-   * Null in the test path (Connection passed directly, no pool).
-   */
+  /** Non-null when constructed with a pool; null when constructed with a directly-supplied Connection. */
   private final DataSource datasource;
   private final String sql;
 
@@ -61,27 +64,40 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   }
 
   /**
-   * Creates a HikariCP pool from explicit credentials.
-   * Pool size 1; keepalive settings prevent silent connection death from TCP timeouts or
-   * server-side idle-connection culling: connectionTimeout=30s, idleTimeout=600s,
-   * maxLifetime=1800s, keepaliveTime=60s.
+   * Creates a HikariCP pool from explicit credentials. Pool size 1; keepalive prevents silent
+   * connection death; connectionTimeout, socketTimeout and connectTimeout are bounded so a hung
+   * Postgres socket cannot stall the operator past the checkpoint timeout.
    */
   static HikariDataSource createPool(String url, String user, String password) {
     HikariConfig cfg = new HikariConfig();
-    cfg.setJdbcUrl(url);
+    cfg.setJdbcUrl(withTimeoutParams(url));
     cfg.setUsername(user);
     cfg.setPassword(password);
     cfg.setMaximumPoolSize(1);
-    cfg.setConnectionTimeout(30_000);
+    cfg.setConnectionTimeout(POOL_CONNECTION_TIMEOUT_MS);
     cfg.setIdleTimeout(600_000);
     cfg.setMaxLifetime(1_800_000);
     cfg.setKeepaliveTime(60_000);
     return new HikariDataSource(cfg);
   }
 
+  /** Appends Postgres socketTimeout/connectTimeout (seconds), adding each only if not already present. */
+  static String withTimeoutParams(String url) {
+    StringBuilder result = new StringBuilder(url);
+    String sep = url.contains("?") ? "&" : "?";
+    if (!url.contains("socketTimeout=")) {
+      result.append(sep).append("socketTimeout=").append(SOCKET_TIMEOUT_SECS);
+      sep = "&";
+    }
+    if (!url.contains("connectTimeout=")) {
+      result.append(sep).append("connectTimeout=").append(CONNECT_TIMEOUT_SECS);
+    }
+    return result.toString();
+  }
+
   /**
-   * Production constructor: borrows a connection from the given pool, sets autoCommit,
-   * and prepares the subclass-supplied SQL. The pool is owned by this instance and closed in close().
+   * Borrows a connection from the given pool, enables autoCommit, and prepares the supplied SQL.
+   * The pool is owned by this instance and closed in close().
    */
   protected JdbcWriterBase(DataSource datasource, String sql) {
     this.datasource = datasource;
@@ -89,7 +105,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     try {
       this.conn = datasource.getConnection();
       this.conn.setAutoCommit(true);
-      this.stmt = conn.prepareStatement(sql);
+      this.stmt = prepare(conn, sql);
       String url = (datasource instanceof HikariDataSource hds) ? hds.getJdbcUrl() : datasource.toString();
       log.info("Connected to {} via connection pool", url);
     } catch (Exception e) {
@@ -104,8 +120,8 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   }
 
   /**
-   * Test-facing constructor: accepts an already-open Connection (e.g. from Testcontainers),
-   * bypassing the pool. datasource is null; close() only closes stmt and conn.
+   * Uses an already-open Connection directly, bypassing the pool; datasource is null,
+   * so close() closes only stmt and conn.
    */
   protected JdbcWriterBase(Connection conn, String sql) {
     this.datasource = null;
@@ -113,17 +129,17 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     this.conn = conn;
     try {
       this.conn.setAutoCommit(true);
-      this.stmt = conn.prepareStatement(sql);
+      this.stmt = prepare(conn, sql);
     } catch (Exception e) {
       throw new RuntimeException("Failed to prepare statement", e);
     }
   }
 
   /**
-   * Executes op, retrying on transient JDBC errors with exponential backoff (1s, 2s, 4s, ...)
-   * and a fresh connection before each retry. Permanent errors (constraint violation, invalid JSONB)
-   * are not retried and throw PermanentJdbcException immediately so callers can route to a DLQ.
-   * Transient failures throw IOException after MAX_ATTEMPTS, triggering Flink checkpoint replay.
+   * Executes op, retrying transient JDBC errors with exponential backoff (1s, 2s, 4s, ...)
+   * and a fresh connection before each retry. Permanent errors (constraint violation, invalid
+   * JSONB) are not retried and throw PermanentJdbcException immediately. Transient failures
+   * throw IOException after MAX_ATTEMPTS attempts.
    */
   protected void executeWithRetry(JdbcOperation op) throws IOException {
     SQLException lastEx = null;
@@ -156,9 +172,16 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     throw new IOException("JDBC write failed after " + MAX_ATTEMPTS + " attempts", lastEx);
   }
 
+  /** Prepares a statement and applies the bounded query timeout so a hung query cannot stall. */
+  private static PreparedStatement prepare(Connection c, String sql) throws SQLException {
+    PreparedStatement ps = c.prepareStatement(sql);
+    ps.setQueryTimeout(QUERY_TIMEOUT_SECS);
+    return ps;
+  }
+
   /**
    * Closes the current statement and connection, then borrows a fresh connection from the pool
-   * and re-prepares the statement. No-op in the test path (no pool available).
+   * and re-prepares the statement. No-op when there is no pool (datasource is null).
    */
   private void reconnect() throws Exception {
     if (datasource == null)
@@ -173,7 +196,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     }
     conn = datasource.getConnection();
     conn.setAutoCommit(true);
-    stmt = conn.prepareStatement(sql);
+    stmt = prepare(conn, sql);
     log.info("Reconnected to Postgres after transient failure");
   }
 
@@ -189,6 +212,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     return state.startsWith("08") || state.startsWith("40") || state.startsWith("57");
   }
 
+  /** Closes the prepared statement, the connection, and the pool if this instance owns one. */
   @Override
   public void close() throws Exception {
     if (stmt != null)
