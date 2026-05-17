@@ -235,7 +235,7 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
   }
 
   /**
-   * Derives a file extension from the URL path. Defaults to .jpg for unrecognised extensions.
+   * Derives a file extension from the URL path. Defaults to .jpg for unrecognized extensions.
    *
    * @param url the image URL
    * @return ".png", ".webp", ".gif", or ".jpg"
@@ -243,10 +243,14 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
   private static String guessExtensionFromUrl(String url) {
     try {
       String path = java.net.URI.create(url).getPath().toLowerCase();
-      if (path.endsWith(".png"))  return ".png";
-      if (path.endsWith(".webp")) return ".webp";
-      if (path.endsWith(".gif"))  return ".gif";
-    } catch (Exception ignored) {}
+      if (path.endsWith(".png"))
+        return ".png";
+      if (path.endsWith(".webp"))
+        return ".webp";
+      if (path.endsWith(".gif"))
+        return ".gif";
+    } catch (Exception ignored) {
+    }
     return ".jpg";
   }
 
@@ -258,10 +262,10 @@ public class MinioUploadFunction extends ProcessFunction<ProcessedEvent, Process
    */
   private static String guessContentType(String extension) {
     return switch (extension) {
-      case ".png"  -> "image/png";
+      case ".png" -> "image/png";
       case ".webp" -> "image/webp";
-      case ".gif"  -> "image/gif";
-      default      -> "image/jpeg";
+      case ".gif" -> "image/gif";
+      default -> "image/jpeg";
     };
   }
 }

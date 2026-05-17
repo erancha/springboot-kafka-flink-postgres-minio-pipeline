@@ -44,8 +44,8 @@ public class StreamingJob {
     String kafkaTopic = EnvConfig.env("KAFKA_TOPIC", "events");
     String dlqTopic = EnvConfig.env("KAFKA_DLQ_TOPIC", "events-dlq");
 
-    StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-    env.enableCheckpointing(10_000);
+    StreamExecutionEnvironment executionEnv = StreamExecutionEnvironment.getExecutionEnvironment();
+    executionEnv.enableCheckpointing(10_000);
 
     // Retry indefinitely with exponential back-off (5 s → 10 min); let Flink HA
     // manage job-level failover rather than giving up after N attempts.
@@ -58,13 +58,13 @@ public class StreamingJob {
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD,
         Duration.ofMinutes(10));
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
-    env.configure(restartCfg);
+    executionEnv.configure(restartCfg);
 
-    CheckpointConfig ckpt = env.getCheckpointConfig();
-    ckpt.setMinPauseBetweenCheckpoints(5_000); // at least 5 s idle between checkpoints to reduce back-pressure
-    ckpt.setCheckpointTimeout(60_000); // abort a checkpoint that does not complete within 60 s
-    ckpt.setMaxConcurrentCheckpoints(1); // disallow overlapping checkpoints; one in-flight at a time
-    ckpt.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION); // keep last checkpoint on cancellation for recovery
+    CheckpointConfig ckptConfig = executionEnv.getCheckpointConfig();
+    ckptConfig.setMinPauseBetweenCheckpoints(5_000); // at least 5 s idle between checkpoints to reduce back-pressure
+    ckptConfig.setCheckpointTimeout(60_000); // abort a checkpoint that does not complete within 60 s
+    ckptConfig.setMaxConcurrentCheckpoints(1); // disallow overlapping checkpoints; one in-flight at a time
+    ckptConfig.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION); // keep last checkpoint on cancellation for recovery
 
     KafkaSource<String> source = KafkaSource.<String>builder()
         .setBootstrapServers(kafkaBootstrap)
@@ -79,19 +79,19 @@ public class StreamingJob {
 
     // =========== happy path ===========
     // noWatermarks() intentional: the real strategy is assigned below after parsing, where event timestamps are available.
-    DataStream<String> json = env.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-events");
+    DataStream<String> rawEvents = executionEnv.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-events");
 
-    SingleOutputStreamOperator<ProcessedEvent> processed = json
+    SingleOutputStreamOperator<ProcessedEvent> parsedEvents = rawEvents
         .process(new ParseEventFunction())
         .name("parse-json");
     // ===================================
 
-    processed.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG) // =========== unhappy path: unparseable messages (bad JSON, missing fields)
+    parsedEvents.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG) // =========== unhappy path: unparseable messages (bad JSON, missing fields)
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("parse-errors-to-dlq");
 
     // =========== happy path: stamp parsed events with event-time watermarks ===========
-    DataStream<ProcessedEvent> processedWithWatermarks = processed
+    DataStream<ProcessedEvent> timedEvents = parsedEvents
         .assignTimestampsAndWatermarks(
             WatermarkStrategy
                 .<ProcessedEvent>forBoundedOutOfOrderness(Duration.ofSeconds(10))
@@ -103,22 +103,22 @@ public class StreamingJob {
         .name("event-time-watermarks");
     // =====================================================================================
 
-    SingleOutputStreamOperator<ProcessedEvent> uploadedImages = processedWithWatermarks
+    SingleOutputStreamOperator<ProcessedEvent> imageEvents = timedEvents
         .filter(e -> "IMAGE".equals(e.getEventType()))
         .process(new MinioUploadFunction()) // =========== happy path: IMAGE events with imageObjectKey set
         .name("minio-upload");
 
-    uploadedImages.getSideOutput(MinioUploadFunction.UPLOAD_ERROR_TAG) // =========== unhappy path: MinIO fetch/upload failures (unreachable URL, size cap, etc.)
+    imageEvents.getSideOutput(MinioUploadFunction.UPLOAD_ERROR_TAG) // =========== unhappy path: MinIO fetch/upload failures (unreachable URL, size cap, etc.)
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("minio-errors-to-dlq");
 
-    uploadedImages
+    imageEvents
         .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect; replay cannot fix a bad payload
         .name("image-to-postgres")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
         .name("postgres-image-errors-to-dlq");
 
-    processedWithWatermarks
+    timedEvents
         .filter(e -> "DATA".equals(e.getEventType()))
         .process(new PostgresWriteFunction()) // =========== happy path: Postgres write is a side effect
         .name("data-to-postgres")
@@ -126,14 +126,14 @@ public class StreamingJob {
         .name("postgres-data-errors-to-dlq");
 
     // Payload fields are stripped before keying and windowing to keep checkpoint state small.
-    buildWindowedCounts(processedWithWatermarks)
+    buildWindowedCounts(timedEvents)
         .process(new PostgresCountWriteFunction()) // =========== happy path: Postgres write is a side effect
         .name("counts-5m-to-postgres")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
         .name("postgres-count-errors-to-dlq");
 
     log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
-    env.execute("Kafka->Flink->(MinIO,Postgres)");
+    executionEnv.execute("Kafka->Flink->(MinIO,Postgres)");
   }
 
   /**
