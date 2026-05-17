@@ -1,8 +1,8 @@
 package com.webcharm.pipeline.functions;
 
+import com.webcharm.pipeline.sinks.JdbcWriter;
 import com.webcharm.pipeline.sinks.PostgresProcessedEventWriter;
 import com.webcharm.pipeline.types.ProcessedEvent;
-import org.apache.flink.api.connector.sink2.SinkWriter;
 
 /**
  * Writes ProcessedEvents to Postgres and routes permanent JDBC failures to a DLQ.
@@ -12,7 +12,7 @@ public class PostgresWriteFunction extends AbstractPostgresWriteFunction<Process
 
   /** Creates a writer that upserts into the processed_events table. */
   @Override
-  protected SinkWriter<ProcessedEvent> createWriter() {
+  protected JdbcWriter<ProcessedEvent> createWriter() {
     return new PostgresProcessedEventWriter();
   }
 

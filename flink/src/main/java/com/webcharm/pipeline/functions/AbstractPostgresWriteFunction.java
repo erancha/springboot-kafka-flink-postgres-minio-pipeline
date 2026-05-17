@@ -5,8 +5,8 @@ import com.webcharm.pipeline.sinks.PermanentJdbcException;
 import com.webcharm.pipeline.types.DlqRecord;
 import java.io.IOException;
 import java.time.Instant;
+import com.webcharm.pipeline.sinks.JdbcWriter;
 import org.apache.flink.api.common.functions.OpenContext;
-import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
@@ -14,18 +14,18 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Template Method base for ProcessFunctions that write to Postgres and route permanent JDBC
- * failures to a DLQ. Owns open/processElement/close, DLQ emission, and InterruptedException
- * handling; subclasses supply the writer and a log-context string.
+ * failures to a DLQ. Owns open/processElement/close and DLQ emission;
+ * subclasses supply the writer and a log-context string.
  */
 abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRecord> {
 
   private static final Logger log = LoggerFactory.getLogger(AbstractPostgresWriteFunction.class);
 
-  private transient SinkWriter<T> writer;
+  private transient JdbcWriter<T> writer;
   private transient ObjectMapper mapper;
 
   /** Returns a new writer instance; called once per task slot during open(). */
-  protected abstract SinkWriter<T> createWriter();
+  protected abstract JdbcWriter<T> createWriter();
 
   /** Returns a log-friendly string identifying record (e.g. "event id=abc" or "count type=DATA start=..."). */
   protected abstract String logContextString(T record);
@@ -45,13 +45,10 @@ abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRe
   @Override
   public void processElement(T record, Context ctx, Collector<DlqRecord> out) throws IOException {
     try {
-      writer.write(record, null);
+      writer.write(record);
     } catch (PermanentJdbcException e) {
       log.error("Permanent JDBC failure for {}, routing to DLQ: {}", logContextString(record), e.getMessage(), e);
       out.collect(new DlqRecord(mapper.writeValueAsString(record), e.getMessage(), Instant.now()));
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Interrupted during Postgres write", e);
     }
   }
 

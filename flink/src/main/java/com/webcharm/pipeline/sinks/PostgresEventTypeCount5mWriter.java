@@ -42,7 +42,7 @@ public class PostgresEventTypeCount5mWriter extends JdbcWriterBase<EventTypeCoun
   }
 
   @Override
-  public void write(EventTypeCount5m value, Context context) throws IOException {
+  public void write(EventTypeCount5m value) throws IOException {
     executeWithRetry(() -> {
       stmt.setTimestamp(1, Timestamp.from(value.getWindowStart()));
       stmt.setTimestamp(2, Timestamp.from(value.getWindowEnd()));

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.config.EnvConfig;
 import com.webcharm.pipeline.functions.ParseEventFunction;
 import com.webcharm.pipeline.functions.MinioUploadFunction;
-import com.webcharm.pipeline.functions.PostgresCountWriteFunction;
+import com.webcharm.pipeline.functions.PostgresCount5mWriteFunction;
 import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.EventTypeCount5m;
@@ -127,7 +127,7 @@ public class StreamingJob {
 
     // Payload fields are stripped before keying and windowing to keep checkpoint state small.
     buildWindowedCounts(timedEvents)
-        .process(new PostgresCountWriteFunction()) // =========== happy path: Postgres write is a side effect
+        .process(new PostgresCount5mWriteFunction()) // =========== happy path: Postgres write is a side effect
         .name("counts-5m-to-postgres")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic)) // =========== unhappy path: fires only on PermanentJdbcException
         .name("postgres-count-errors-to-dlq");

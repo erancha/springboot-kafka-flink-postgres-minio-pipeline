@@ -49,7 +49,7 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
   }
 
   @Override
-  public void write(ProcessedEvent value, Context context) throws IOException {
+  public void write(ProcessedEvent value) throws IOException {
     String payloadJson = value.getPayload() == null ? null
         : mapper.writeValueAsString(value.getPayload());
     executeWithRetry(() -> {

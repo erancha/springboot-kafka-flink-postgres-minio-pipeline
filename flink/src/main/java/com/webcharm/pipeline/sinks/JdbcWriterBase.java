@@ -8,7 +8,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import javax.sql.DataSource;
-import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * (constraint violations, invalid JSONB — all other SQLStates) throw PermanentJdbcException
  * immediately so callers can route to a dead-letter queue without triggering Flink checkpoint replay.
  */
-abstract class JdbcWriterBase<T> implements SinkWriter<T> {
+abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
   /** Operation that can throw SQLException, used as the unit of work passed to executeWithRetry. */
   @FunctionalInterface
@@ -188,11 +187,6 @@ abstract class JdbcWriterBase<T> implements SinkWriter<T> {
     if (state == null)
       return true;
     return state.startsWith("08") || state.startsWith("40") || state.startsWith("57");
-  }
-
-  @Override
-  public void flush(boolean endOfInput) {
-    // autoCommit=true; nothing to flush
   }
 
   @Override

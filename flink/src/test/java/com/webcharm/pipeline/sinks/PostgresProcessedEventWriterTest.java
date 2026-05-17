@@ -42,7 +42,7 @@ class PostgresProcessedEventWriterTest {
         "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         Map.of("key", "value"), null, null, LocalDate.of(2024, 1, 15));
 
-    writer.write(event, null);
+    writer.write(event);
 
     verify(stmt).executeUpdate();
   }
@@ -55,7 +55,7 @@ class PostgresProcessedEventWriterTest {
         "IMAGE", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         null, null, key, LocalDate.of(2024, 1, 15));
 
-    writer.write(event, null);
+    writer.write(event);
 
     verify(stmt).setString(6, key);
     verify(stmt).executeUpdate();
@@ -70,7 +70,7 @@ class PostgresProcessedEventWriterTest {
         "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         null, null, null, LocalDate.of(2024, 1, 15));
 
-    assertThrows(IOException.class, () -> writer.write(event, null));
+    assertThrows(IOException.class, () -> writer.write(event));
   }
 
   /** Permanent JDBC failure (non-transient SQLState) propagates as PermanentJdbcException so callers can DLQ-route it. */
@@ -83,6 +83,6 @@ class PostgresProcessedEventWriterTest {
         "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         null, null, null, LocalDate.of(2024, 1, 15));
 
-    assertThrows(PermanentJdbcException.class, () -> writer.write(event, null));
+    assertThrows(PermanentJdbcException.class, () -> writer.write(event));
   }
 }

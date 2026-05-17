@@ -71,7 +71,7 @@ class PostgresProcessedEventWriterIT {
         id, "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         null, null, null, LocalDate.of(2024, 1, 15));
 
-    writer.write(event, null);
+    writer.write(event);
 
     try (Connection c = DriverManager.getConnection(pg.getJdbcUrl(), "postgres", "postgres");
          Statement st = c.createStatement();
@@ -89,7 +89,7 @@ class PostgresProcessedEventWriterIT {
         id, "IMAGE", Instant.parse("2024-01-15T10:00:00Z"), "ui",
         null, null, "images/2024-01-15/" + id + ".jpg", LocalDate.of(2024, 1, 15));
 
-    writer.write(event, null);
+    writer.write(event);
 
     try (Connection c = DriverManager.getConnection(pg.getJdbcUrl(), "postgres", "postgres");
          Statement st = c.createStatement();
@@ -109,8 +109,8 @@ class PostgresProcessedEventWriterIT {
         id, "IMAGE", Instant.parse("2024-01-15T10:01:00Z"), "ui",
         null, null, "images/key.jpg", LocalDate.of(2024, 1, 15));
 
-    writer.write(first, null);
-    writer.write(second, null);
+    writer.write(first);
+    writer.write(second);
 
     try (Connection c = DriverManager.getConnection(pg.getJdbcUrl(), "postgres", "postgres");
          Statement st = c.createStatement();
