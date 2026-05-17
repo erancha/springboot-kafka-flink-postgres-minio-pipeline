@@ -21,6 +21,7 @@ import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ExternalizedCheckpointRetention;
 import org.apache.flink.configuration.RestartStrategyOptions;
+import org.apache.flink.connector.kafka.sink.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
@@ -220,10 +221,16 @@ public class StreamingJob {
   private interface SerializablePredicate<T> extends Predicate<T>, Serializable {
   }
 
-  /** Builds a KafkaSink that writes DlqRecords to the given topic. Each call returns a new instance. */
+  /**
+   * Builds a KafkaSink that writes DlqRecords to the given topic with AT_LEAST_ONCE delivery.
+   * AT_LEAST_ONCE flushes pending records at each Flink checkpoint, so a task restart after
+   * emitting a DLQ record but before the checkpoint cannot silently drop it. Duplicates are
+   * acceptable on the DLQ; silent loss is not.
+   */
   private static KafkaSink<DlqRecord> buildDlqSink(String kafkaBootstrap, String dlqTopic) {
     return KafkaSink.<DlqRecord>builder()
         .setBootstrapServers(kafkaBootstrap)
+        .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
         .setRecordSerializer(
             KafkaRecordSerializationSchema.<DlqRecord>builder()
                 .setTopic(dlqTopic)
