@@ -48,6 +48,15 @@
       <artifactId>flink-connector-kafka</artifactId>
       <version>${flink.kafka.connector.version}</version>
     </dependency>
+    <!-- flink-connector-kafka declares flink-connector-base as 'provided', and the
+         apache/flink:2.2 runtime image does not ship it in flink-dist, so it must be
+         bundled into the fat jar (compile scope) like the Kafka connector itself.
+         Versioned with Flink core (flink.version), not the external connector. -->
+    <dependency>
+      <groupId>org.apache.flink</groupId>
+      <artifactId>flink-connector-base</artifactId>
+      <version>${flink.version}</version>
+    </dependency>
 
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
