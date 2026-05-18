@@ -183,6 +183,7 @@ class MinioAsyncImageFunctionTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
   void bodyRead_runsOnInjectedExecutor_notHttpClientCompletionThread() throws Exception {
     ErrorResponseException nsk = noSuchKey();
     when(minioClient.statObject(any())).thenThrow(nsk);
