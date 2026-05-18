@@ -63,13 +63,15 @@ public final class PreflightChecks {
   }
 
   /**
-   * Verifies the processed_events table exposes every column the writer uses. Throws if the
-   * table or any column is missing.
+   * Verifies the processed_events and event_type_counts_5m tables expose every column their
+   * writers use. Throws if either table or any column is missing.
    */
   static void verifyPostgresSchema(Connection conn) throws Exception {
     try (Statement st = conn.createStatement()) {
       st.execute("SELECT id, event_type, event_time, source, payload, image_object_key "
           + "FROM processed_events WHERE false");
+      st.execute("SELECT window_start, window_end, event_type, event_count, updated_at "
+          + "FROM event_type_counts_5m WHERE false");
     }
   }
 

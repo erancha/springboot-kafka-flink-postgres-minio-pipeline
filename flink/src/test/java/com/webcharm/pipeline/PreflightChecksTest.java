@@ -3,6 +3,7 @@ package com.webcharm.pipeline;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 import io.minio.MinioClient;
@@ -54,6 +55,17 @@ class PreflightChecksTest {
     Statement st = mock(Statement.class);
     when(conn.createStatement()).thenReturn(st);
     when(st.execute(anyString())).thenThrow(new SQLException("column \"x\" does not exist", "42703"));
+    assertThrows(SQLException.class, () -> PreflightChecks.verifyPostgresSchema(conn));
+  }
+
+  @Test
+  void countTableMissing_throws() throws Exception {
+    Connection conn = mock(Connection.class);
+    Statement st = mock(Statement.class);
+    when(conn.createStatement()).thenReturn(st);
+    when(st.execute(contains("processed_events"))).thenReturn(false);
+    when(st.execute(contains("event_type_counts_5m")))
+        .thenThrow(new SQLException("relation \"event_type_counts_5m\" does not exist", "42P01"));
     assertThrows(SQLException.class, () -> PreflightChecks.verifyPostgresSchema(conn));
   }
 }
