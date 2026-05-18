@@ -158,14 +158,19 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
         .handle((res, err) -> err == null ? res : classify(value, err));
   }
 
-  /** Single async HTTP GET with read timeout, status classification, and the 10 MB cap. */
+  /**
+   * Single async HTTP GET with read timeout, status classification, and the 10 MB cap.
+   * sendAsync resolves its future when the response headers arrive while the body is still
+   * streaming, so the blocking readNBytes runs via thenApplyAsync on the bounded executor
+   * rather than on the HttpClient's own thread, keeping every external I/O path bounded.
+   */
   private CompletableFuture<byte[]> fetch(String url) {
     HttpRequest req = HttpRequest.newBuilder(URI.create(url))
         .timeout(Duration.ofSeconds(readTimeoutSecs))
         .GET()
         .build();
     return http.sendAsync(req, HttpResponse.BodyHandlers.ofInputStream())
-        .thenApply(resp -> {
+        .thenApplyAsync(resp -> {
           int status = resp.statusCode();
           if (status / 100 == 5) {
             throw new RuntimeException("Transient server error status=" + status);
@@ -184,7 +189,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
           } catch (java.io.IOException e) {
             throw new RuntimeException("Error reading image body", e);
           }
-        });
+        }, executor);
   }
 
   /** Maps a completion error to permanent (PermanentImageException) or retryable (everything else). */

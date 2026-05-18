@@ -20,6 +20,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -176,6 +180,51 @@ class MinioAsyncImageFunctionTest {
 
     assertFalse(r.isSuccess());
     assertFalse(r.isRetryable());
+  }
+
+  @Test
+  void bodyRead_runsOnInjectedExecutor_notHttpClientCompletionThread() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+
+    ExecutorService owned = Executors.newFixedThreadPool(
+        2, r -> new Thread(r, "owned-exec-" + UUID.randomUUID()));
+
+    HttpResponse<InputStream> response = mock(HttpResponse.class);
+    when(response.statusCode()).thenReturn(200);
+    AtomicReference<String> bodyReadThread = new AtomicReference<>();
+    when(response.body()).thenAnswer(inv -> {
+      bodyReadThread.set(Thread.currentThread().getName());
+      return new ByteArrayInputStream(new byte[] {1, 2, 3});
+    });
+
+    // sendAsync resolves later on a foreign thread, mirroring the HttpClient's own
+    // internal executor completing the response while the body is still streaming.
+    CompletableFuture<HttpResponse<InputStream>> pending = new CompletableFuture<>();
+    doAnswer(inv -> {
+      Thread completer = new Thread(() -> {
+        try {
+          Thread.sleep(150);
+        } catch (InterruptedException ignored) {
+          Thread.currentThread().interrupt();
+        }
+        pending.complete(response);
+      }, "httpclient-internal");
+      completer.setDaemon(true);
+      completer.start();
+      return pending;
+    }).when(httpClient).sendAsync(any(), any());
+
+    EnrichResult r = new MinioAsyncImageFunction(minioClient, httpClient, owned)
+        .enrich(urlEvent("https://cdn.example.com/p.jpg"))
+        .get(5, TimeUnit.SECONDS);
+    owned.shutdownNow();
+
+    assertTrue(r.isSuccess());
+    assertNotNull(bodyReadThread.get(), "body was never read");
+    assertTrue(bodyReadThread.get().startsWith("owned-exec-"),
+        "blocking body read must run on the injected executor, but ran on: "
+            + bodyReadThread.get());
   }
 
   @Test
