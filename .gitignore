@@ -1,5 +1,6 @@
 **/target/
 .claude/worktrees/
+.claude/settings.local.json
 .vscode/
 docs/superpowers/
 docs/*-code-eval-*.md
