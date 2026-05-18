@@ -21,3 +21,6 @@ minio:
   access-key: ${MINIO_ROOT_USER:minio}
   secret-key: ${MINIO_ROOT_PASSWORD:minio123}
   bucket: ${MINIO_BUCKET:images}
+  connect-timeout-secs: ${MINIO_CONNECT_TIMEOUT_SECS:5}
+  write-timeout-secs: ${MINIO_WRITE_TIMEOUT_SECS:30}
+  read-timeout-secs: ${MINIO_READ_TIMEOUT_SECS:30}
