@@ -72,19 +72,22 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
 
   /**
    * Parses a raw JSON string into a ProcessedEvent, extracting all known fields including
-   * imageObjectKey. An eventType that is not DATA or IMAGE - including a missing field - is
-   * folded to the UNEXPECTED sentinel.
+   * imageObjectKey. The parse is a pure function of its input: id and eventTime are taken
+   * verbatim from the message and a missing or blank value is rejected (thrown, hence routed
+   * to the DLQ) rather than backfilled, so a checkpoint replay re-derives the identical
+   * upsert key and the id-keyed idempotent write stays effective-exactly-once. An eventType
+   * that is not DATA or IMAGE - including a missing field - is folded to the UNEXPECTED
+   * sentinel.
    */
   @SuppressWarnings("unchecked")
   ProcessedEvent parse(String value) throws Exception {
     Map<String, Object> event = mapper.readValue(value, new TypeReference<Map<String, Object>>() {});
 
-    String id = String.valueOf(event.getOrDefault("id", UUID.randomUUID().toString()));
+    String id = required(event, "id");
     String rawType = String.valueOf(event.getOrDefault("eventType", "")).toUpperCase();
     String eventType = (EventType.DATA.equals(rawType) || EventType.IMAGE.equals(rawType))
         ? rawType : EventType.UNEXPECTED;
-    String eventTimeStr = String.valueOf(event.getOrDefault("eventTime", Instant.now().toString()));
-    Instant eventTime = Instant.parse(eventTimeStr);
+    Instant eventTime = Instant.parse(required(event, "eventTime"));
     String sourceName = String.valueOf(event.getOrDefault("source", "unknown"));
 
     Map<String, Object> payload = null;
@@ -101,5 +104,18 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
     return new ProcessedEvent(
         UUID.fromString(id), eventType, eventTime, sourceName,
         payload, imageUrl, imageObjectKey, date);
+  }
+
+  /**
+   * Returns the value of a required string field, throwing if the field is absent, null, or
+   * blank. Used for id and eventTime, whose values must come from the message so the parse
+   * is deterministic across a checkpoint replay; a fabricated default would break idempotency.
+   */
+  private static String required(Map<String, Object> event, String field) {
+    Object raw = event.get(field);
+    if (raw == null || raw.toString().isBlank()) {
+      throw new IllegalArgumentException("missing required field: " + field);
+    }
+    return raw.toString();
   }
 }

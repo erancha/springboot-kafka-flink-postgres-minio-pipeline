@@ -11,6 +11,8 @@ dead-letter routing. (Backend responsibilities are summarized in the project
 
 The pipeline achieves **effective exactly-once** delivery: Flink triggers a checkpoint every 10s (each must complete within the 60s timeout, else that attempt is aborted); on restart it replays from the last successful checkpoint; idempotent upserts (`ON CONFLICT (id) DO UPDATE` in Postgres, `statObject` existence check in MinIO) absorb any duplicates. Not 2PC.
 
+The upsert keys (`id`, and the `eventTime`-derived MinIO object path) are stable across a replay because parsing is deterministic: `ParseEventFunction` reads `id` and `eventTime` verbatim from the message and routes a record missing either to the DLQ instead of backfilling a generated UUID or wall-clock time. A fabricated key would change on replay and write a duplicate, so the closed-system invariant (the backend always sets both before publishing to the private Kafka topic) is enforced at parse rather than assumed.
+
 ### Checkpointing & recovery
 
 - Kafka consumer offsets are committed only on successful checkpoint (`enable.auto.commit=false`), so the committed offset always reflects durably processed state.

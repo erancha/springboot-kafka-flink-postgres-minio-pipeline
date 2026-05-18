@@ -237,4 +237,74 @@ class ParseEventFunctionTest {
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
   }
+
+  /**
+   * A missing id is routed to the DLQ rather than backfilled with a random UUID. Fabricating
+   * an id makes the parse non-deterministic: a checkpoint replay would emit a different id and
+   * the id-keyed upsert would write a duplicate row, breaking the effective-exactly-once
+   * guarantee. Rejecting the record keeps the parse a pure function of its input.
+   */
+  @Test
+  void processElement_missingId_routesToDlq() throws Exception {
+    TestableFn fn = new TestableFn();
+    fn.run("""
+        {
+          "eventType": "DATA",
+          "eventTime": "2024-01-15T10:00:00Z"
+        }
+        """);
+
+    assertEquals(1, fn.dlqCapture.size());
+    assertTrue(fn.mainCapture.isEmpty());
+    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+  }
+
+  /**
+   * A missing eventTime is routed to the DLQ rather than backfilled with Instant.now().
+   * Fabricating the time makes the parse non-deterministic: a replay would derive a different
+   * eventTime (and partition date), so the id-keyed upsert would overwrite the row with
+   * different data and an IMAGE object would land under a different MinIO key.
+   */
+  @Test
+  void processElement_missingEventTime_routesToDlq() throws Exception {
+    TestableFn fn = new TestableFn();
+    fn.run("""
+        {
+          "id": "00000000-0000-0000-0000-000000000010",
+          "eventType": "DATA"
+        }
+        """);
+
+    assertEquals(1, fn.dlqCapture.size());
+    assertTrue(fn.mainCapture.isEmpty());
+    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+  }
+
+  /**
+   * Parsing the same well-formed event twice yields byte-identical id and eventTime, so a
+   * checkpoint replay reproduces the same upsert key and the same row — the property the
+   * effective-exactly-once claim rests on.
+   */
+  @Test
+  void processElement_sameInputParsedTwice_isDeterministic() throws Exception {
+    String json = """
+        {
+          "id": "00000000-0000-0000-0000-000000000011",
+          "eventType": "DATA",
+          "eventTime": "2024-01-15T10:00:00Z",
+          "source": "ui"
+        }
+        """;
+    TestableFn first = new TestableFn();
+    first.run(json);
+    TestableFn second = new TestableFn();
+    second.run(json);
+
+    assertEquals(1, first.mainCapture.size());
+    assertEquals(1, second.mainCapture.size());
+    ProcessedEvent a = first.mainCapture.get(0);
+    ProcessedEvent b = second.mainCapture.get(0);
+    assertEquals(a.getId(), b.getId());
+    assertEquals(a.getEventTime(), b.getEventTime());
+  }
 }
