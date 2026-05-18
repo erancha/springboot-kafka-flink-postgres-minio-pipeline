@@ -6,19 +6,21 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
-/** Event after Kafka deserialization. Carries only the fields written to Postgres. */
-public class ProcessedEvent implements Serializable {
+/**
+ * Event after Kafka deserialization. Carries only the fields written to Postgres. Immutable so it
+ * can be safely carried through Flink checkpoint state and across operator boundaries without risk
+ * of accidental mutation; build a new instance to derive a changed event.
+ */
+public final class ProcessedEvent implements Serializable {
 
-  private UUID id;
-  private String eventType;
-  private Instant eventTime;
-  private String source;
-  private Map<String, Object> payload;
-  private String imageUrl;
-  private String imageObjectKey;
-  private LocalDate date;
-
-  public ProcessedEvent() {}
+  private final UUID id;
+  private final String eventType;
+  private final Instant eventTime;
+  private final String source;
+  private final Map<String, Object> payload;
+  private final String imageUrl;
+  private final String imageObjectKey;
+  private final LocalDate date;
 
   public ProcessedEvent(UUID id, String eventType, Instant eventTime, String source,
       Map<String, Object> payload, String imageUrl, String imageObjectKey, LocalDate date) {
@@ -33,26 +35,18 @@ public class ProcessedEvent implements Serializable {
   }
 
   public UUID getId() { return id; }
-  public void setId(UUID id) { this.id = id; }
 
   public String getEventType() { return eventType; }
-  public void setEventType(String eventType) { this.eventType = eventType; }
 
   public Instant getEventTime() { return eventTime; }
-  public void setEventTime(Instant eventTime) { this.eventTime = eventTime; }
 
   public String getSource() { return source; }
-  public void setSource(String source) { this.source = source; }
 
   public Map<String, Object> getPayload() { return payload; }
-  public void setPayload(Map<String, Object> payload) { this.payload = payload; }
 
   public String getImageUrl() { return imageUrl; }
-  public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
 
   public String getImageObjectKey() { return imageObjectKey; }
-  public void setImageObjectKey(String imageObjectKey) { this.imageObjectKey = imageObjectKey; }
 
   public LocalDate getDate() { return date; }
-  public void setDate(LocalDate date) { this.date = date; }
 }
