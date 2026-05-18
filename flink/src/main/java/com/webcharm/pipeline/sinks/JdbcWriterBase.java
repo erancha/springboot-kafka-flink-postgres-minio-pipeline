@@ -26,10 +26,10 @@ import org.slf4j.LoggerFactory;
  */
 abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
-  /** A unit of JDBC work that may throw SQLException. */
+  /** A unit of JDBC work performed against the supplied (always current) prepared statement. */
   @FunctionalInterface
   interface JdbcOperation {
-    void execute() throws SQLException;
+    void execute(PreparedStatement sqlStmt) throws SQLException;
   }
 
   private static final Logger log = LoggerFactory.getLogger(JdbcWriterBase.class);
@@ -47,10 +47,10 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
   /** Non-null when constructed with a pool; null when constructed with a directly-supplied Connection. */
   private final DataSource datasource;
-  private final String sql;
+  private final String sqlText;
 
-  protected Connection conn;
-  protected PreparedStatement stmt;
+  private Connection conn;
+  private PreparedStatement sqlStmt;
 
   /**
    * Creates a HikariCP pool from env vars POSTGRES_URL / POSTGRES_USER / POSTGRES_PASSWORD.
@@ -99,13 +99,13 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
    * Borrows a connection from the given pool, enables autoCommit, and prepares the supplied SQL.
    * The pool is owned by this instance and closed in close().
    */
-  protected JdbcWriterBase(DataSource datasource, String sql) {
+  protected JdbcWriterBase(DataSource datasource, String sqlText) {
     this.datasource = datasource;
-    this.sql = sql;
+    this.sqlText = sqlText;
     try {
       this.conn = datasource.getConnection();
       this.conn.setAutoCommit(true);
-      this.stmt = prepare(conn, sql);
+      this.sqlStmt = prepareSqlStmt(conn, sqlText);
       String url = (datasource instanceof HikariDataSource hds) ? hds.getJdbcUrl() : datasource.toString();
       log.info("Connected to {} via connection pool", url);
     } catch (Exception e) {
@@ -121,31 +121,33 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
   /**
    * Uses an already-open Connection directly, bypassing the pool; datasource is null,
-   * so close() closes only stmt and conn.
+   * so close() closes only sqlStmt and conn.
    */
-  protected JdbcWriterBase(Connection conn, String sql) {
+  protected JdbcWriterBase(Connection conn, String sqlText) {
     this.datasource = null;
-    this.sql = sql;
+    this.sqlText = sqlText;
     this.conn = conn;
     try {
       this.conn.setAutoCommit(true);
-      this.stmt = prepare(conn, sql);
+      this.sqlStmt = prepareSqlStmt(conn, sqlText);
     } catch (Exception e) {
       throw new RuntimeException("Failed to prepare statement", e);
     }
   }
 
   /**
-   * Executes op, retrying transient JDBC errors with exponential backoff (1s, 2s, 4s, ...)
-   * and a fresh connection before each retry. Permanent errors (constraint violation, invalid
-   * JSONB) are not retried and throw PermanentJdbcException immediately. Transient failures
-   * throw IOException after MAX_ATTEMPTS attempts.
+   * Executes op against the current prepared statement, retrying transient JDBC errors with
+   * exponential backoff (1s, 2s, 4s, ...) and a fresh connection before each retry. Each attempt
+   * (including retries after a reconnect) is handed the live statement, so callers must bind
+   * through the supplied statement rather than caching it. Permanent errors (constraint
+   * violation, invalid JSONB) are not retried and throw PermanentJdbcException immediately.
+   * Transient failures throw IOException after MAX_ATTEMPTS attempts.
    */
   protected void executeWithRetry(JdbcOperation op) throws IOException {
     SQLException lastEx = null;
     for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
-        op.execute();
+        op.execute(sqlStmt);
         return;
       } catch (SQLException e) {
         if (!isTransient(e)) {
@@ -173,8 +175,8 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   }
 
   /** Prepares a statement and applies the bounded query timeout so a hung query cannot stall. */
-  private static PreparedStatement prepare(Connection c, String sql) throws SQLException {
-    PreparedStatement ps = c.prepareStatement(sql);
+  private static PreparedStatement prepareSqlStmt(Connection c, String sqlText) throws SQLException {
+    PreparedStatement ps = c.prepareStatement(sqlText);
     ps.setQueryTimeout(QUERY_TIMEOUT_SECS);
     return ps;
   }
@@ -187,7 +189,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     if (datasource == null)
       return;
     try {
-      stmt.close();
+      sqlStmt.close();
     } catch (Exception ignored) {
     }
     try {
@@ -196,7 +198,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     }
     conn = datasource.getConnection();
     conn.setAutoCommit(true);
-    stmt = prepare(conn, sql);
+    sqlStmt = prepareSqlStmt(conn, sqlText);
     log.info("Reconnected to Postgres after transient failure");
   }
 
@@ -215,8 +217,8 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   /** Closes the prepared statement, the connection, and the pool if this instance owns one. */
   @Override
   public void close() throws Exception {
-    if (stmt != null)
-      stmt.close();
+    if (sqlStmt != null)
+      sqlStmt.close();
     if (conn != null)
       conn.close();
     if (datasource instanceof AutoCloseable ac)

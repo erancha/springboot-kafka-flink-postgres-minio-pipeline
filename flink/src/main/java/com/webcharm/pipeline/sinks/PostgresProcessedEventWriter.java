@@ -52,15 +52,15 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
   public void write(ProcessedEvent value) throws IOException {
     String payloadJson = value.getPayload() == null ? null
         : mapper.writeValueAsString(value.getPayload());
-    executeWithRetry(() -> {
-      stmt.setObject(1, value.getId());
-      stmt.setString(2, value.getEventType());
-      stmt.setTimestamp(3, Timestamp.from(value.getEventTime()));
-      stmt.setString(4, value.getSource());
-      stmt.setString(5, payloadJson);
-      stmt.setString(6, value.getImageObjectKey());
-      stmt.setTimestamp(7, Timestamp.from(Instant.now()));
-      stmt.executeUpdate();
+    executeWithRetry(sqlStmt -> {
+      sqlStmt.setObject(1, value.getId());
+      sqlStmt.setString(2, value.getEventType());
+      sqlStmt.setTimestamp(3, Timestamp.from(value.getEventTime()));
+      sqlStmt.setString(4, value.getSource());
+      sqlStmt.setString(5, payloadJson);
+      sqlStmt.setString(6, value.getImageObjectKey());
+      sqlStmt.setTimestamp(7, Timestamp.from(Instant.now()));
+      sqlStmt.executeUpdate();
     });
     log.debug("Wrote event id={} type={}", value.getId(), value.getEventType());
   }
