@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
+import com.webcharm.pipeline.types.EventType;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,9 +29,6 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
 
   private static final Logger log = LoggerFactory.getLogger(ParseEventFunction.class);
 
-  /** Sentinel eventType for an event that is not DATA or IMAGE (invalid value or missing field). */
-  private static final String UNEXPECTED = "UNEXPECTED";
-
   public static final OutputTag<DlqRecord> PARSE_ERROR_TAG =
       new OutputTag<DlqRecord>("parse-error") {};
 
@@ -51,7 +49,7 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
   public void processElement(String value, Context ctx, Collector<ProcessedEvent> out) {
     try {
       ProcessedEvent event = parse(value);
-      if (UNEXPECTED.equals(event.getEventType())) {
+      if (EventType.UNEXPECTED.equals(event.getEventType())) {
         log.error("Unexpected eventType (not DATA/IMAGE): the backend validates eventType as an "
             + "enum and Kafka is private, so this indicates a non-backend producer or schema "
             + "skew. Routing to DLQ.");
@@ -59,7 +57,7 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
             new DlqRecord(DlqStage.PARSE, value, "unexpected eventType (not DATA/IMAGE)", Instant.now()));
         return;
       }
-      if ("IMAGE".equals(event.getEventType())
+      if (EventType.IMAGE.equals(event.getEventType())
           && event.getImageUrl() == null
           && event.getImageObjectKey() == null) {
         ctx.output(PARSE_ERROR_TAG,
@@ -83,7 +81,8 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
 
     String id = String.valueOf(event.getOrDefault("id", UUID.randomUUID().toString()));
     String rawType = String.valueOf(event.getOrDefault("eventType", "")).toUpperCase();
-    String eventType = ("DATA".equals(rawType) || "IMAGE".equals(rawType)) ? rawType : UNEXPECTED;
+    String eventType = (EventType.DATA.equals(rawType) || EventType.IMAGE.equals(rawType))
+        ? rawType : EventType.UNEXPECTED;
     String eventTimeStr = String.valueOf(event.getOrDefault("eventTime", Instant.now().toString()));
     Instant eventTime = Instant.parse(eventTimeStr);
     String sourceName = String.valueOf(event.getOrDefault("source", "unknown"));

@@ -12,6 +12,7 @@ import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
+import com.webcharm.pipeline.types.EventType;
 import com.webcharm.pipeline.types.EventTypeCount5m;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
@@ -124,7 +125,7 @@ public class StreamingJob {
     // =====================================================================================
 
     SingleOutputStreamOperator<ProcessedEvent> imagePipeline = buildImagePipeline(
-        timedEvents.filter(e -> "IMAGE".equals(e.getEventType())));
+        timedEvents.filter(e -> EventType.IMAGE.equals(e.getEventType())));
 
     // =========== unhappy path: image fetch/upload failures or exhausted transient ===========
     DataStream<DlqRecord> minioErrors =
@@ -137,7 +138,7 @@ public class StreamingJob {
         .name("image-to-postgres");
 
     DataStream<DlqRecord> dataPostgresErrors = timedEvents
-        .filter(e -> "DATA".equals(e.getEventType()))
+        .filter(e -> EventType.DATA.equals(e.getEventType()))
         .process(new PostgresWriteFunction(DlqStage.DATA_POSTGRES))
         .name("data-to-postgres");
 
