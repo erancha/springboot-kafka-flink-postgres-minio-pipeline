@@ -52,7 +52,7 @@ public class EventController {
   /** Validates and publishes a typed event to Kafka; returns the assigned id and timestamp. */
   @PostMapping("/events")
   public EventResponse publishEvent(@Valid @RequestBody EventRequest request) {
-    if (EventType.IMAGE == request.getEventType() && request.getImageUrl() != null && !request.getImageUrl().isBlank()) {
+    if (EventType.IMAGE == request.getEventType()) {
       validateImageUrl(request.getImageUrl());
     }
     UUID id = UUID.randomUUID();
@@ -62,13 +62,20 @@ public class EventController {
   }
 
   /**
-   * Guards against SSRF: rejects non-http(s) schemes and hosts absent from IMAGE_URL_ALLOWED_HOSTS.
-   * An empty allowlist denies all URLs — the env var must be explicitly configured to permit any fetch.
+   * Validates the imageUrl for an IMAGE event: it must be present and a well-formed http(s) URL
+   * whose host is in IMAGE_URL_ALLOWED_HOSTS. Guards against SSRF. An empty allowlist denies all
+   * URLs — the env var must be explicitly configured to permit any fetch. File uploads use the
+   * separate /api/events/image-upload endpoint and do not pass through here.
    *
-   * @throws IllegalArgumentException if the URL is malformed, has no host, or uses a non-http(s) scheme
+   * @throws IllegalArgumentException if the URL is null, blank, malformed, has no host, or uses a non-http(s) scheme
    * @throws SecurityException if the allowlist is unconfigured or the host is absent from the allowlist
    */
   private void validateImageUrl(String rawUrl) {
+    if (rawUrl == null || rawUrl.isBlank()) {
+      throw new IllegalArgumentException(
+          "IMAGE event via /api/events requires a non-blank imageUrl; "
+              + "use /api/events/image-upload for file uploads");
+    }
     URI uri;
     try {
       uri = URI.create(rawUrl);

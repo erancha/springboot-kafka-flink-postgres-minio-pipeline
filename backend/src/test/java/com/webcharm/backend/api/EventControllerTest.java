@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -186,10 +187,22 @@ class EventControllerTest {
     }
 
     @Test
-    void publishEvent_imageEventWithNoImageUrl_returns200() throws Exception {
+    void publishEvent_imageEventWithNoImageUrl_returns400AndDoesNotPublish() throws Exception {
         mvc.perform(post("/api/events")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"eventType\":\"IMAGE\"}"))
-            .andExpect(status().isOk());
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
+    }
+
+    @Test
+    void publishEvent_imageEventWithBlankImageUrl_returns400AndDoesNotPublish() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"   \"}"))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
     }
 }
