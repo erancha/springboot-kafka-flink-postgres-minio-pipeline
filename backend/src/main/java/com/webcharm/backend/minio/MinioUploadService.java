@@ -4,8 +4,8 @@ import com.webcharm.backend.storage.ImageUploadService;
 import com.webcharm.backend.storage.ObjectStoreException;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -28,33 +28,40 @@ public class MinioUploadService implements ImageUploadService {
 
   /**
    * Uploads file bytes to MinIO under key images/{date}/{id}.{ext} and returns that key.
+   * Streams from file.getInputStream() without buffering the body in heap.
    * Throws ObjectStoreException if the MinIO call fails.
-   * Lets IOException from file.getBytes() propagate (mapped to 500 by GlobalExceptionHandler).
+   * Lets IOException from file.getInputStream() propagate (mapped to 500 by GlobalExceptionHandler).
    */
   public String upload(UUID id, Instant eventTime, MultipartFile file) throws IOException {
     String contentType = file.getContentType() != null ? file.getContentType() : "image/jpeg";
     String date = DateTimeFormatter.ISO_LOCAL_DATE.format(eventTime.atZone(ZoneOffset.UTC));
     String objectKey = "images/" + date + "/" + id + guessExtension(contentType);
 
-    byte[] bytes = file.getBytes();
-    try (ByteArrayInputStream in = new ByteArrayInputStream(bytes)) {
-      minioClient.putObject(
-          PutObjectArgs.builder()
-              .bucket(bucket).object(objectKey)
-              .stream(in, bytes.length, -1)
-              .contentType(contentType)
-              .build());
-    } catch (Exception e) {
-      throw new ObjectStoreException("MinIO upload failed for id=" + id, e);
+    // getInputStream() IOException propagates directly (stream open failure is not a MinIO error).
+    // All putObject exceptions are wrapped as ObjectStoreException (MinIO failure).
+    try (InputStream imageStream = file.getInputStream()) {
+      try {
+        minioClient.putObject(
+            PutObjectArgs.builder()
+                .bucket(bucket).object(objectKey)
+                .stream(imageStream, file.getSize(), -1)
+                .contentType(contentType)
+                .build());
+      } catch (Exception e) {
+        throw new ObjectStoreException("MinIO upload failed for id=" + id, e);
+      }
     }
     return objectKey;
   }
 
   private static String guessExtension(String contentType) {
     String ct = contentType.toLowerCase();
-    if (ct.contains("png"))  return ".png";
-    if (ct.contains("webp")) return ".webp";
-    if (ct.contains("gif"))  return ".gif";
+    if (ct.contains("png"))
+      return ".png";
+    if (ct.contains("webp"))
+      return ".webp";
+    if (ct.contains("gif"))
+      return ".gif";
     return ".jpg";
   }
 }
