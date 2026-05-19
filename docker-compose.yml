@@ -50,7 +50,7 @@ services:
       kafka:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c", "
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 1 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 8 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000"]
 
   # PostgreSQL simulating a data-warehouse-like analytics database for processed DATA/IMAGE events.
@@ -176,7 +176,7 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 2
+        taskmanager.numberOfTaskSlots: 8
         metrics.reporters: prom
         metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
         metrics.reporter.prom.port: 9249
@@ -207,7 +207,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    command: ["/bin/bash", "-lc", "until curl -fsS http://flink-jobmanager:8081/overview >/dev/null; do echo 'waiting for flink-jobmanager...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
+    command: ["/bin/bash", "-lc", "until curl -fsS http://flink-jobmanager:8081/overview >/dev/null; do echo 'waiting for flink-jobmanager...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p 8 -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
 
   # React UI (served via Nginx) used to submit IMAGE/DATA events to the backend API.
   ui:

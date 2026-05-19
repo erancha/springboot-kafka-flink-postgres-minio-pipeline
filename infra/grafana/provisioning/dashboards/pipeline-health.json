@@ -7,7 +7,7 @@
   "tags": ["pipeline", "flink", "operability"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 6,
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "30s",
   "templating": { "list": [] },
@@ -31,33 +31,33 @@
     },
     {
       "id": 2,
-      "type": "stat",
-      "title": "Job restarts",
-      "description": "Cumulative full restarts of the streaming job. A rising value is the primary 'is it healthy at 3am' signal.",
+      "type": "timeseries",
+      "title": "Job restarts (per window)",
+      "description": "Full restarts of the streaming job within the selected time range (windowed increase of the cumulative counter). A flat 0 is healthy; a step shows exactly when a restart occurred so it can be correlated with load or checkpoint events.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
-      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_numRestarts)" } ]
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "stepAfter" } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numRestarts[$__rate_interval]))", "legendFormat": "restarts" } ]
     },
     {
       "id": 3,
-      "type": "stat",
-      "title": "Failed checkpoints",
-      "description": "Number of checkpoints that did not complete. Sustained growth means state is not being durably snapshotted.",
+      "type": "timeseries",
+      "title": "Failed checkpoints (per window)",
+      "description": "Checkpoints that failed within the selected time range (windowed increase). 0 during healthy operation; the benign one-time startup trigger-abort drops out because the lifetime counter stays flat. A nonzero step means checkpoints are failing now and is correlatable in time.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
-      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_numberOfFailedCheckpoints)" } ]
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "stepAfter" } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numberOfFailedCheckpoints[$__rate_interval]))", "legendFormat": "failed checkpoints" } ]
     },
     {
       "id": 4,
-      "type": "stat",
-      "title": "Last checkpoint duration (ms)",
-      "description": "Duration of the most recent successful checkpoint. Climbing toward the 60s checkpoint timeout indicates backpressure.",
+      "type": "timeseries",
+      "title": "Last checkpoint duration",
+      "description": "Duration of the most recent checkpoint over time (auto-scaled: ms for fast checkpoints, s for slow ones). A flat low line is healthy; a trend toward the 60s checkpoint timeout indicates backpressure or a slow write path.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
-      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 30000 }, { "color": "red", "value": 55000 } ] } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointDuration)" } ]
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 30000 }, { "color": "red", "value": 55000 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointDuration)", "legendFormat": "last checkpoint duration" } ]
     },
     {
       "id": 5,
