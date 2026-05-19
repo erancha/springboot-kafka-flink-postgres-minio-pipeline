@@ -83,6 +83,19 @@ services:
       postgres:
         condition: service_healthy
 
+  # Prometheus scrapes the Flink JobManager/TaskManager metrics reporter so pipeline health
+  # (consumer lag, restarts, backpressure, checkpoints, DLQ volume by stage, retryable
+  # enrichment failures) is queryable; Grafana reads it via the Prometheus datasource.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - flink-jobmanager
+
   # MinIO provides local S3-compatible object storage for IMAGE event outputs.
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
@@ -140,6 +153,9 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
+        metrics.reporters: prom
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
     depends_on:
       kafka:
         condition: service_healthy
@@ -161,6 +177,9 @@ services:
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
+        metrics.reporters: prom
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
     depends_on:
       - flink-jobmanager
 
@@ -206,3 +225,4 @@ volumes:
   postgres_data:
   minio_data:
   grafana_data:
+  prometheus_data:

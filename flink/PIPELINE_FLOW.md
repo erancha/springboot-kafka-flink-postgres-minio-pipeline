@@ -39,6 +39,26 @@ The upsert keys (`id`, and the `eventTime`-derived MinIO object path) are stable
 
 - The four routing paths (parse, image enrichment, Postgres write, 5-minute counts) are unioned into a single Kafka producer for `events-dlq`. Every `DlqRecord` carries a `stage` field (`DlqStage`: PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, COUNT_POSTGRES) identifying its origin, so a consumer can attribute a dead-letter record to its stage without a per-source sink. One sink couples dead-letter backpressure across the branches; dead-letter volume is low by nature (only failures), so this is acceptable.
 
+### Observability
+
+Pipeline health is exported as Prometheus metrics, not just logs. The Flink Prometheus reporter (the `metrics-prometheus` plugin bundled in the `apache/flink:2.2` image) runs on the JobManager and TaskManager at port 9249; a Prometheus container scrapes both, and Grafana renders the pre-provisioned [**Pipeline Health** dashboard](http://localhost:3031/d/pipeline-health) through a Prometheus datasource, provisioned from [`infra/grafana/provisioning/dashboards/pipeline-health.json`](../infra/grafana/provisioning/dashboards/pipeline-health.json). It is a Flink-reporter-backed dashboard; the only Kafka signal is the Flink source's consumer lag, not broker-level metrics. The dashboard is split into two rows: **Health** (paging-grade signals — is the pipeline OK at 3am) and **Throughput & performance** (workload shape and latency, deliberately not paging signals).
+
+Health row:
+
+- Reporter-native (no code): Kafka-source consumer lag (`pendingRecords`), job restarts, last-checkpoint duration and failed-checkpoint count, and per-task backpressure / busy time. The paging-grade copy of consumer lag is owned by this row because sustained lag growth is the canonical "falling behind ingest" alarm; a read-only mirror of the same series is repeated in the Throughput row for cross-referencing.
+- Custom counters: `dlq_records`, labelled by the same `DlqStage` carried on every `DlqRecord`, so the `IMAGE_ENRICH` series is the enrichment failure rate. A pass-through `DlqMeterFunction` registers it immediately before the `events-dlq` sink and emits each record unchanged, so metering does not alter dead-letter behavior. `image_retryable_failures` is incremented when `MinioAsyncImageFunction` classifies a transient failure, giving retry pressure on the IMAGE branch.
+
+Throughput & performance row:
+
+- Reporter-native (no code): per-second and cumulative `numRecordsIn` on the `data_to_postgres` and `image_to_postgres` operators, giving the DATA-vs-IMAGE workload split as it enters the Postgres write. Permanent write failures still count here; the per-stage DLQ panel in the Health row carries the failure split. The left column stacks the consumer-lag mirror, events/sec, and the cumulative-by-type counter top-to-bottom (the latter two are the same `numRecordsIn` series as a rate and as a raw counter), so lag, throughput, and total volume for a path read down one column — rising lag while events/sec is flat means the pipeline, not the inbound rate, is the bottleneck.
+- Custom counters on the `minio-enrich-async` operator: `minio_uploads` (successful `putObject` calls) and `minio_upload_nanos` (cumulative upload duration). Average upload latency is derived in Prometheus as `rate(minio_upload_nanos) / rate(minio_uploads)`, and uploads/sec as `rate(minio_uploads)`. Only successful uploads are metered — idempotency hits and backend-uploaded passthrough images perform no `putObject` and are excluded, so the metrics reflect genuine writes.
+
+Deliberate boundaries: the backend is not Micrometer-instrumented (only Kafka/Flink are exported); per-attempt retry counts are not metered because `JdbcWriterBase` has no Flink metric group, and a retries-exhausted outcome is already visible as `dlq_records` volume for its stage. There is no Alertmanager — the dashboard is for inspection, not paging.
+
+## Failure handling by stage
+
+The tables below catalog, per stage, every handled failure mode and the job's concrete response — the case-level backing for the reliability behaviors described above. The Class column drives the response: Permanent routes to the DLQ without retry, Transient is retried with bounded backoff before the DLQ (the exact mechanism — framework async retry or in-operator retry then checkpoint replay — differs per stage and is given in the row), and startup misconfiguration is caught by pre-flight before any event is processed.
+
 ### Parse stage (`ParseEventFunction`)
 
 | #   | Failure                                                   | Class      | Current behavior                                                                                                                                                                                                                                                   |     |

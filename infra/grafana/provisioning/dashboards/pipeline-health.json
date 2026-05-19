@@ -1,0 +1,163 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "title": "Pipeline Health",
+  "uid": "pipeline-health",
+  "tags": ["pipeline", "flink", "operability"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 4,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Health — is the pipeline OK at 3am?",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Flink scrape targets up",
+      "description": "Number of Flink Prometheus endpoints (JobManager + TaskManager) Prometheus is successfully scraping. 0 means metrics are blind.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(up{job=\"flink\"})" } ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Job restarts",
+      "description": "Cumulative full restarts of the streaming job. A rising value is the primary 'is it healthy at 3am' signal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_numRestarts)" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Failed checkpoints",
+      "description": "Number of checkpoints that did not complete. Sustained growth means state is not being durably snapshotted.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_numberOfFailedCheckpoints)" } ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Last checkpoint duration (ms)",
+      "description": "Duration of the most recent successful checkpoint. Climbing toward the 60s checkpoint timeout indicates backpressure.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 30000 }, { "color": "red", "value": 55000 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointDuration)" } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Kafka consumer lag (pending records)",
+      "description": "Records published to the events topic but not yet consumed by the Flink source. Sustained growth = the pipeline is falling behind ingest. This is the canonical 'are we keeping up' alarm, so it lives in Health, not Throughput.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords)", "legendFormat": "pending records" } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "DLQ records / sec by stage",
+      "description": "Rate of dead-letter records emitted, broken down by the originating pipeline stage (PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, COUNT_POSTGRES). Backed by the custom dlq_records counter on the dlq-meter operator.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (stage) (rate(flink_taskmanager_job_task_operator_stage_dlq_records[5m]))", "legendFormat": "{{stage}}" } ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Retryable enrichment failures / sec",
+      "description": "Rate of IMAGE enrichment failures classified as retryable (transient fetch/upload errors). Backed by the custom image_retryable_failures counter; retry pressure on the IMAGE branch.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(flink_taskmanager_job_task_operator_image_retryable_failures[5m]))", "legendFormat": "retryable failures" } ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Backpressure & busy time (ms/s per task)",
+      "description": "Per-task time spent backpressured vs busy. Backpressure approaching 1000 ms/s means a downstream operator is the bottleneck.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "avg(flink_taskmanager_job_task_backPressuredTimeMsPerSecond)", "legendFormat": "backpressured" },
+        { "refId": "B", "expr": "avg(flink_taskmanager_job_task_busyTimeMsPerSecond)", "legendFormat": "busy" }
+      ]
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "Throughput & performance — workload shape, not paging signals",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Kafka consumer lag (pending records)",
+      "description": "Mirror of the Health-row lag panel, stacked directly above events/sec so lag can be cross-referenced against throughput without leaving the Throughput view: rising lag while events/sec is flat means the pipeline, not the inbound rate, is the bottleneck. The paging-grade copy of this signal lives in the Health row.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords)", "legendFormat": "pending records" } ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Average MinIO upload time (ms)",
+      "description": "Mean putObject duration over the window: rate(minio_upload_nanos) / rate(minio_uploads), converted to ms. Backed by the custom counter pair on the minio-enrich-async operator; only successful uploads are metered (idempotency hits and passthrough are excluded).",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "(sum(rate(flink_taskmanager_job_task_operator_minio_upload_nanos[5m])) / sum(rate(flink_taskmanager_job_task_operator_minio_uploads[5m]))) / 1e6", "legendFormat": "avg upload time" } ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Events / sec into Postgres by type (DATA vs IMAGE)",
+      "description": "Per-second records entering each Postgres write operator: data_to_postgres (DATA path) vs image_to_postgres (enriched IMAGE path). Reporter-native numRecordsIn, no custom code. Stacked between lag (above) and the cumulative-by-type counter (below) — the same numRecordsIn series as a rate. Permanent-write failures still count here; the per-stage DLQ panel in Health shows the failure split.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (operator_name) (rate(flink_taskmanager_job_task_operator_numRecordsIn{operator_name=~\"data_to_postgres|image_to_postgres\"}[5m]))", "legendFormat": "{{operator_name}}" } ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "MinIO uploads / sec",
+      "description": "Rate of successful MinIO putObject calls (custom minio_uploads counter). Distinct from IMAGE event rate: idempotency hits and backend-uploaded passthrough images do not perform a putObject and are not counted here.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(flink_taskmanager_job_task_operator_minio_uploads[5m]))", "legendFormat": "uploads/sec" } ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Cumulative events processed by type",
+      "description": "Running total of records entering each Postgres write operator since the job started. Same numRecordsIn series as events/sec (directly above), shown as the raw counter for the long-run DATA-vs-IMAGE workload mix. Resets to 0 on a job restart (expected).",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (operator_name) (flink_taskmanager_job_task_operator_numRecordsIn{operator_name=~\"data_to_postgres|image_to_postgres\"})", "legendFormat": "{{operator_name}}" } ]
+    }
+  ]
+}

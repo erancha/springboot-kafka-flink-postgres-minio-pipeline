@@ -31,9 +31,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Verifies the async enrichment outcomes: passthrough, statObject idempotency guard,
- * size cap, SSRF 3xx guard, 4xx permanent, 5xx/IOException retryable, success.
- * Uses a direct (same-thread) executor and mocked clients so CompletableFutures resolve
- * synchronously and assertions are deterministic without Docker.
+ * size cap, SSRF 3xx guard, 4xx permanent, 5xx/IOException retryable, success, and the
+ * retryable-failure and successful-upload Prometheus metrics. Uses a direct (same-thread)
+ * executor and mocked clients so CompletableFutures resolve synchronously and assertions
+ * are deterministic without Docker.
  */
 @ExtendWith(MockitoExtension.class)
 class MinioAsyncImageFunctionTest {
@@ -66,6 +67,10 @@ class MinioAsyncImageFunctionTest {
     return new ErrorResponseException(er, null, "");
   }
 
+  /**
+   * An event whose imageObjectKey is already set (the backend uploaded the bytes) has nothing
+   * to enrich, so it passes straight through as success and no HTTP fetch is attempted.
+   */
   @Test
   void imageObjectKeyAlreadySet_passesThroughAsSuccess() throws Exception {
     ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
@@ -78,6 +83,10 @@ class MinioAsyncImageFunctionTest {
     verify(httpClient, never()).sendAsync(any(), any());
   }
 
+  /**
+   * When MinIO already holds the target object (statObject succeeds), enrichment is idempotent:
+   * it skips the fetch and upload and returns success, so a checkpoint replay cannot duplicate work.
+   */
   @Test
   void objectAlreadyExists_skipsFetchAndUpload() throws Exception {
     when(minioClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
@@ -91,6 +100,10 @@ class MinioAsyncImageFunctionTest {
     verify(minioClient, never()).putObject(any());
   }
 
+  /**
+   * The object is absent (statObject reports NoSuchKey) and the URL returns 200, so the image
+   * is fetched and uploaded to MinIO. Expected success with a putObject call as the happy path.
+   */
   @Test
   void objectAbsent_fetchesAndUploads_success() throws Exception {
     ErrorResponseException nsk = noSuchKey();
@@ -104,6 +117,10 @@ class MinioAsyncImageFunctionTest {
     verify(minioClient).putObject(any());
   }
 
+  /**
+   * A 4xx is a client error that retrying cannot fix, so it is classified permanent and routed
+   * to the DLQ stamped with stage IMAGE_ENRICH. Expected not success and not retryable.
+   */
   @Test
   void response4xx_permanentFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
@@ -119,6 +136,11 @@ class MinioAsyncImageFunctionTest {
     assertEquals(DlqStage.IMAGE_ENRICH, r.failure().stage());
   }
 
+  /**
+   * The HTTP client follows no redirects as an SSRF guard, so a 3xx is handled like any other
+   * non-2xx: permanent and never retried, so an allowlisted host cannot redirect the socket to
+   * an internal endpoint. Expected not success and not retryable.
+   */
   @Test
   void response3xxRedirect_permanentFailure_ssrfGuard() throws Exception {
     ErrorResponseException nsk = noSuchKey();
@@ -132,6 +154,10 @@ class MinioAsyncImageFunctionTest {
     assertFalse(r.isRetryable());
   }
 
+  /**
+   * A 5xx is a transient server-side error that may succeed later, so it is classified retryable
+   * and the framework async retry re-attempts it before it can reach the DLQ. Expected retryable.
+   */
   @Test
   void response5xx_retryableFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
@@ -145,6 +171,10 @@ class MinioAsyncImageFunctionTest {
     assertTrue(r.isRetryable());
   }
 
+  /**
+   * A transport failure (connection reset) during the fetch is transient and may succeed on a
+   * retry, so it is classified retryable rather than permanent. Expected retryable.
+   */
   @Test
   void ioExceptionFromFetch_retryableFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
@@ -158,6 +188,10 @@ class MinioAsyncImageFunctionTest {
     assertTrue(r.isRetryable());
   }
 
+  /**
+   * A body exceeding the 10 MB cap will never fit no matter how many times it is retried, so it
+   * is classified permanent and fails fast. Expected not success and not retryable.
+   */
   @Test
   void responseOversized_permanentFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
@@ -171,6 +205,10 @@ class MinioAsyncImageFunctionTest {
     assertFalse(r.isRetryable());
   }
 
+  /**
+   * An IMAGE event carrying neither an imageUrl nor an imageObjectKey can never be enriched, so
+   * it fails permanently without any fetch. Expected not success and not retryable.
+   */
   @Test
   void noUrlNoKey_permanentFailure() throws Exception {
     ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
@@ -182,6 +220,12 @@ class MinioAsyncImageFunctionTest {
     assertFalse(r.isRetryable());
   }
 
+  /**
+   * The blocking response-body read must run on the function's bounded executor, not on the
+   * HttpClient's internal completion thread, so a slow body cannot starve the HttpClient's pool.
+   * Expected success with the body observed on an owned-exec thread; fails if it ran on the
+   * foreign completion thread.
+   */
   @Test
   @SuppressWarnings("unchecked")
   void bodyRead_runsOnInjectedExecutor_notHttpClientCompletionThread() throws Exception {
@@ -228,6 +272,120 @@ class MinioAsyncImageFunctionTest {
             + bodyReadThread.get());
   }
 
+  /**
+   * A retryable failure (5xx) increments the Prometheus retryable-failure counter exactly once,
+   * so retry pressure on the IMAGE branch is observable. Expected retryable and counter is 1.
+   */
+  @Test
+  void retryableFailure_incrementsRetryableCounter() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(503, null)))
+        .when(httpClient).sendAsync(any(), any());
+
+    MinioAsyncImageFunction fn = newFn();
+    EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/a.jpg")).join();
+
+    assertTrue(r.isRetryable());
+    assertEquals(1, fn.retryableFailureCount());
+  }
+
+  /**
+   * A permanent failure (4xx) is not a retry candidate, so the retryable-failure counter is not
+   * incremented and stays at 0. Guards against permanent failures inflating retry metrics.
+   */
+  @Test
+  void permanentFailure_doesNotIncrementRetryableCounter() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(404, null)))
+        .when(httpClient).sendAsync(any(), any());
+
+    MinioAsyncImageFunction fn = newFn();
+    EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/missing.jpg")).join();
+
+    assertFalse(r.isRetryable());
+    assertEquals(0, fn.retryableFailureCount());
+  }
+
+  /**
+   * A successful enrichment never touches the retryable-failure counter, so the metric reflects
+   * only genuine retry pressure. Expected counter is 0.
+   */
+  @Test
+  void success_doesNotIncrementRetryableCounter() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3})))
+        .when(httpClient).sendAsync(any(), any());
+
+    MinioAsyncImageFunction fn = newFn();
+    fn.enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
+
+    assertEquals(0, fn.retryableFailureCount());
+  }
+
+  /**
+   * A successful fetch-and-upload meters exactly one MinIO upload and records a positive
+   * putObject duration, so DATA-vs-IMAGE throughput and average upload latency are observable
+   * in Prometheus. Expected success, upload count 1, and upload nanos greater than 0.
+   */
+  @Test
+  void successfulUpload_isMeteredOnceWithPositiveDuration() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3})))
+        .when(httpClient).sendAsync(any(), any());
+
+    MinioAsyncImageFunction fn = newFn();
+    EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
+
+    assertTrue(r.isSuccess());
+    verify(minioClient).putObject(any());
+    assertEquals(1, fn.uploadCount());
+    assertTrue(fn.uploadNanos() > 0, "a successful upload must record a positive duration");
+  }
+
+  /**
+   * An idempotency hit (the object already exists) skips putObject entirely, so it is not
+   * counted as an upload and cannot inflate throughput or skew average upload latency.
+   * Expected success with upload count 0.
+   */
+  @Test
+  void idempotencyHit_isNotMeteredAsUpload() throws Exception {
+    when(minioClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
+
+    MinioAsyncImageFunction fn = newFn();
+    EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
+
+    assertTrue(r.isSuccess());
+    verify(minioClient, never()).putObject(any());
+    assertEquals(0, fn.uploadCount());
+    assertEquals(0, fn.uploadNanos());
+  }
+
+  /**
+   * A permanent failure (4xx) never reaches putObject, so it is not counted as an upload and
+   * the upload metrics reflect only genuine writes. Expected not success with upload count 0.
+   */
+  @Test
+  void permanentFailure_isNotMeteredAsUpload() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(404, null)))
+        .when(httpClient).sendAsync(any(), any());
+
+    MinioAsyncImageFunction fn = newFn();
+    EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/missing.jpg")).join();
+
+    assertFalse(r.isSuccess());
+    assertEquals(0, fn.uploadCount());
+  }
+
+  /**
+   * The object key extension is derived from the URL path, so a .png URL produces a key ending
+   * in .png (extension and content-type routing). Expected success with a .png key suffix.
+   */
   @Test
   void pngUrl_keySuffixedPng() throws Exception {
     ErrorResponseException nsk = noSuchKey();

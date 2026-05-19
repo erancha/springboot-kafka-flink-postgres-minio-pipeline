@@ -16,3 +16,11 @@ datasources:
       timescaledb: false
     secureJsonData:
       password: postgres
+
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus-pipeline
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: false

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.config.EnvConfig;
+import com.webcharm.pipeline.functions.DlqMeterFunction;
 import com.webcharm.pipeline.functions.EnrichSplitFunction;
 import com.webcharm.pipeline.functions.MinioAsyncImageFunction;
 import com.webcharm.pipeline.functions.ParseEventFunction;
@@ -154,6 +155,8 @@ public class StreamingJob {
     // nature (only failures), so this is acceptable and is the standard pattern.
     parseErrors
         .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors)
+        .map(new DlqMeterFunction())
+        .name("dlq-meter")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("dlq-sink");
 

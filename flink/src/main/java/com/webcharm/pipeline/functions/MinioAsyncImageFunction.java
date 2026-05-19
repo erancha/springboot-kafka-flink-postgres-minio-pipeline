@@ -25,6 +25,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.flink.api.common.functions.OpenContext;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.SimpleCounter;
 import org.apache.flink.streaming.api.functions.async.ResultFuture;
 import org.apache.flink.streaming.api.functions.async.RichAsyncFunction;
 import org.slf4j.Logger;
@@ -53,6 +55,16 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   private transient ExecutorService ownedExecutor;
   private transient Executor executor;
   private transient ObjectMapper mapper;
+  // Counts retryable enrichment failures so retry pressure on the IMAGE branch is observable in
+  // Prometheus. Initialized to a standalone counter for the test/inject path; replaced in open()
+  // with the metric-group-registered counter on the cluster.
+  private transient Counter retryableFailures = new SimpleCounter();
+  // Throughput/performance metrics for the IMAGE branch: number of successful MinIO uploads and
+  // cumulative putObject duration in nanoseconds. Average upload latency is derived in Prometheus
+  // as rate(minio_upload_nanos) / rate(minio_uploads). Same standalone-then-registered lifecycle
+  // as retryableFailures.
+  private transient Counter uploadCount = new SimpleCounter();
+  private transient Counter uploadNanos = new SimpleCounter();
 
   private final int connectTimeoutSecs;
   private final int readTimeoutSecs;
@@ -74,7 +86,11 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     mapper = new ObjectMapper();
   }
 
-  /** Builds the MinIO client, redirect-blocking HTTP client, executor, and JSON mapper once per slot. */
+  /**
+   * Builds the MinIO client, redirect-blocking HTTP client, executor, and JSON mapper once per
+   * slot, and registers the retryable-failure and successful-upload metric counters with the
+   * operator metric group.
+   */
   @Override
   public void open(OpenContext openContext) {
     if (minio == null) {
@@ -99,6 +115,9 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     if (mapper == null) {
       mapper = new ObjectMapper();
     }
+    retryableFailures = getRuntimeContext().getMetricGroup().counter("image_retryable_failures");
+    uploadCount = getRuntimeContext().getMetricGroup().counter("minio_uploads");
+    uploadNanos = getRuntimeContext().getMetricGroup().counter("minio_upload_nanos");
     log.info("MinioAsyncImageFunction initialized: executorThreads={}", executorThreads);
   }
 
@@ -202,7 +221,23 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
       return EnrichResult.permanentFailure(record);
     }
     log.warn("Retryable image failure for id={}: {}", value.getId(), msg);
+    retryableFailures.inc();
     return EnrichResult.retryableFailure(record);
+  }
+
+  /** Number of retryable enrichment failures classified so far; backs the Prometheus counter. */
+  long retryableFailureCount() {
+    return retryableFailures.getCount();
+  }
+
+  /** Number of successful MinIO uploads performed; backs the Prometheus minio_uploads counter. */
+  long uploadCount() {
+    return uploadCount.getCount();
+  }
+
+  /** Cumulative nanoseconds spent in successful MinIO putObject calls; backs minio_upload_nanos. */
+  long uploadNanos() {
+    return uploadNanos.getCount();
   }
 
   private static Throwable unwrap(Throwable t) {
@@ -229,14 +264,21 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     }
   }
 
-  /** Uploads the fetched bytes to MinIO; wraps checked exceptions so they classify as retryable. */
+  /**
+   * Uploads the fetched bytes to MinIO and meters the call (count and duration) on success;
+   * wraps checked exceptions so they classify as retryable. A failed putObject is not metered,
+   * so the upload metrics reflect only genuine writes.
+   */
   private void putObjectUnchecked(String bucket, String objectKey, byte[] bytes, String contentType) {
     try (ByteArrayInputStream in = new ByteArrayInputStream(bytes)) {
+      long start = System.nanoTime();
       minio.putObject(PutObjectArgs.builder()
           .bucket(bucket).object(objectKey)
           .stream(in, bytes.length, -1)
           .contentType(contentType)
           .build());
+      uploadNanos.inc(System.nanoTime() - start);
+      uploadCount.inc();
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

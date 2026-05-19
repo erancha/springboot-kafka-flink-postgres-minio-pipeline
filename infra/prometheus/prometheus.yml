@@ -1,0 +1,15 @@
+# Scrapes the Flink Prometheus reporter exposed by the JobManager and TaskManager
+# (plugin flink-metrics-prometheus, ships in apache/flink:2.2, default port 9249).
+# These metrics carry consumer lag, restarts, backpressure, checkpoint health, and the
+# pipeline's custom dlq_records (by stage) and image_retryable_failures counters.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: flink
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - flink-jobmanager:9249
+          - flink-taskmanager:9249
