@@ -80,6 +80,7 @@ Additional commands:
 ./scripts/start.sh --help               # start options (--restart, --rebuild)
 ./scripts/stop.sh --help                # stop the stack; --remove-volumes removes volumes, --prune-dangling-images also purges build artifacts
 ./scripts/test.sh --help                # run tests; see TESTING.md for suite details
+./scripts/stress.sh --help              # concurrent DATA/IMAGE-url load generator (requires --profile testing for IMAGE)
 
 ./scripts/ps.sh                         # show running containers and service URLs
 ./scripts/logs.sh --help                # stream logs (supports -e/--errors and per-service filtering)

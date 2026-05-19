@@ -16,7 +16,7 @@ describe('canSubmit', () => {
     // Switch to IMAGE
     await user.selectOptions(screen.getAllByRole('combobox')[0], 'IMAGE');
 
-    // Clear the default imageUrl value ('https://picsum.photos/200')
+    // Clear the default imageUrl value ('https://www.gstatic.com/webp/gallery/1.jpg')
     const urlInput = screen.getByPlaceholderText('https://example.com/image.jpg');
     await user.clear(urlInput);
 
@@ -28,7 +28,7 @@ describe('canSubmit', () => {
     const user = userEvent.setup();
 
     await user.selectOptions(screen.getAllByRole('combobox')[0], 'IMAGE');
-    // Default imageUrl is 'https://picsum.photos/200' (non-empty), so button is enabled
+    // Default imageUrl is 'https://www.gstatic.com/webp/gallery/1.jpg' (non-empty), so button is enabled
     expect(screen.getByRole('button', { name: /send event/i })).not.toBeDisabled();
   });
 });

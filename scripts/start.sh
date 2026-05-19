@@ -3,7 +3,7 @@
 # Usage: start.sh [--restart] [--rebuild] [--profile <name>]
 #   --restart          Stop the stack first before starting
 #   --rebuild          Rebuild all Docker images before starting
-#   --profile testing  Apply docker-compose.testing.yml (enables picsum.photos image URL fetching)
+#   --profile testing  Apply docker-compose.testing.yml (enables www.gstatic.com image URL fetching)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

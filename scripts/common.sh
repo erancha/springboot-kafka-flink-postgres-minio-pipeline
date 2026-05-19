@@ -20,3 +20,15 @@ require_docker() {
     exit 1
   }
 }
+
+# Source .env into the environment for scripts that need values in the shell.
+# docker compose reads .env itself, so only shell-side scripts call this.
+# No-op if .env is absent.
+load_env() {
+  if [[ -f "$ROOT_DIR/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$ROOT_DIR/.env"
+    set +a
+  fi
+}

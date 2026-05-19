@@ -5,7 +5,7 @@ type EventType = 'DATA' | 'IMAGE';
 export default function App() {
   const [eventType, setEventType] = useState<EventType>('DATA');
   const [jsonText, setJsonText] = useState<string>(JSON.stringify({ foo: 'bar', count: 1 }, null, 2));
-  const [imageUrl, setImageUrl] = useState<string>('https://picsum.photos/200');
+  const [imageUrl, setImageUrl] = useState<string>('https://www.gstatic.com/webp/gallery/1.jpg');
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);

@@ -1,4 +1,4 @@
 services:
   backend:
     environment:
-      - IMAGE_URL_ALLOWED_HOSTS=picsum.photos
+      - IMAGE_URL_ALLOWED_HOSTS=www.gstatic.com
