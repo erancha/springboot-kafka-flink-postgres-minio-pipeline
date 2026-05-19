@@ -15,9 +15,12 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -31,8 +34,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Verifies the async enrichment outcomes: passthrough, statObject idempotency guard,
- * size cap, SSRF 3xx guard, 4xx permanent, 5xx/IOException retryable, success, and the
- * retryable-failure and successful-upload Prometheus metrics. Uses a direct (same-thread)
+ * size cap, non-image/absent Content-Type guard, SSRF 3xx guard, 4xx permanent,
+ * 5xx/IOException retryable, success, and the retryable-failure and successful-upload
+ * Prometheus metrics. Uses a direct (same-thread)
  * executor and mocked clients so CompletableFutures resolve synchronously and assertions
  * are deterministic without Docker.
  */
@@ -51,10 +55,26 @@ class MinioAsyncImageFunctionTest {
         null, url, null, LocalDate.now());
   }
 
-  @SuppressWarnings("unchecked")
   private static HttpResponse<InputStream> resp(int status, byte[] body) {
+    return resp(status, body, "image/jpeg");
+  }
+
+  /**
+   * Builds a mock HTTP response. For 2xx responses the Content-Type header is stubbed
+   * (a null contentType yields a header-less response, modelling an origin that omits it);
+   * the header is only stubbed on 2xx because the content-type guard is unreachable for
+   * non-2xx, and stubbing it there would trip Mockito strict-stub checks.
+   */
+  @SuppressWarnings("unchecked")
+  private static HttpResponse<InputStream> resp(int status, byte[] body, String contentType) {
     HttpResponse<InputStream> r = mock(HttpResponse.class);
     when(r.statusCode()).thenReturn(status);
+    if (status / 100 == 2) {
+      Map<String, List<String>> headers = contentType == null
+          ? Map.of()
+          : Map.of("Content-Type", List.of(contentType));
+      lenient().when(r.headers()).thenReturn(HttpHeaders.of(headers, (a, b) -> true));
+    }
     if (body != null) {
       when(r.body()).thenReturn(new ByteArrayInputStream(body));
     }
@@ -206,6 +226,45 @@ class MinioAsyncImageFunctionTest {
   }
 
   /**
+   * A 200 whose Content-Type is not image/* (e.g. an HTML error page returned by an allowlisted
+   * host) is not an image and retrying cannot make it one, so it is classified permanent and
+   * never uploaded to MinIO. Expected not success, not retryable, and no putObject.
+   */
+  @Test
+  void response200_nonImageContentType_permanentFailure() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(200, null, "text/html; charset=utf-8")))
+        .when(httpClient).sendAsync(any(), any());
+
+    EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/login.html")).join();
+
+    assertFalse(r.isSuccess());
+    assertFalse(r.isRetryable());
+    assertEquals(DlqStage.IMAGE_ENRICH, r.failure().stage());
+    verify(minioClient, never()).putObject(any());
+  }
+
+  /**
+   * A 200 with no Content-Type header is unverifiable as an image; storing it under a fabricated
+   * image content-type is exactly the misleading behavior the guard prevents, so an absent
+   * Content-Type is permanent. Expected not success, not retryable, and no putObject.
+   */
+  @Test
+  void response200_missingContentType_permanentFailure() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(200, null, null)))
+        .when(httpClient).sendAsync(any(), any());
+
+    EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/a.jpg")).join();
+
+    assertFalse(r.isSuccess());
+    assertFalse(r.isRetryable());
+    verify(minioClient, never()).putObject(any());
+  }
+
+  /**
    * An IMAGE event carrying neither an imageUrl nor an imageObjectKey can never be enriched, so
    * it fails permanently without any fetch. Expected not success and not retryable.
    */
@@ -237,6 +296,8 @@ class MinioAsyncImageFunctionTest {
 
     HttpResponse<InputStream> response = mock(HttpResponse.class);
     when(response.statusCode()).thenReturn(200);
+    lenient().when(response.headers()).thenReturn(
+        HttpHeaders.of(Map.of("Content-Type", List.of("image/jpeg")), (a, b) -> true));
     AtomicReference<String> bodyReadThread = new AtomicReference<>();
     when(response.body()).thenAnswer(inv -> {
       bodyReadThread.set(Thread.currentThread().getName());

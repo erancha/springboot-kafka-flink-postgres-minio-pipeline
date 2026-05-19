@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -178,10 +179,11 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   }
 
   /**
-   * Single async HTTP GET with read timeout, status classification, and the 10 MB cap.
-   * sendAsync resolves its future when the response headers arrive while the body is still
-   * streaming, so the blocking readNBytes runs via thenApplyAsync on the bounded executor
-   * rather than on the HttpClient's own thread, keeping every external I/O path bounded.
+   * Single async HTTP GET with read timeout, status classification, an image Content-Type
+   * check, and the 10 MB cap. sendAsync resolves its future when the response headers arrive
+   * while the body is still streaming, so the blocking readNBytes runs via thenApplyAsync on
+   * the bounded executor rather than on the HttpClient's own thread, keeping every external
+   * I/O path bounded.
    */
   private CompletableFuture<byte[]> fetch(String url) {
     HttpRequest req = HttpRequest.newBuilder(URI.create(url))
@@ -197,6 +199,16 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
           if (status / 100 != 2) {
             // covers 3xx (redirect/SSRF guard) and 4xx
             throw new PermanentImageException("Non-2xx fetching imageUrl status=" + status);
+          }
+          // An allowlisted host can still return a non-image body (HTML error/login page,
+          // PDF). Retrying cannot turn it into an image, and storing it under a fabricated
+          // image content-type would be silently wrong, so an absent or non-image/* Content-Type
+          // is a permanent failure.
+          String contentType = resp.headers().firstValue("Content-Type").orElse("");
+          if (!contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
+            throw new PermanentImageException(
+                "imageUrl response is not an image (Content-Type="
+                    + (contentType.isBlank() ? "<absent>" : contentType) + ")");
           }
           try (InputStream body = resp.body()) {
             byte[] bytes = body.readNBytes((int) (MAX_IMAGE_BYTES + 1));
