@@ -110,6 +110,43 @@ class EventControllerTest {
     }
 
     @Test
+    void publishImageUpload_nonImageContentType_returns400AndDoesNotPublish() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "doc.pdf", "application/pdf", new byte[]{1, 2, 3});
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
+        verify(imageUploadService, never()).upload(any(), any(), any());
+    }
+
+    @Test
+    void publishImageUpload_missingContentType_returns400AndDoesNotPublish() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "mystery.bin", null, new byte[]{1, 2, 3});
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
+        verify(imageUploadService, never()).upload(any(), any(), any());
+    }
+
+    @Test
+    void publishImageUpload_oversizedFile_returns400AndDoesNotPublish() throws Exception {
+        byte[] tooBig = new byte[10 * 1024 * 1024 + 1];
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "huge.jpg", "image/jpeg", tooBig);
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
+        verify(imageUploadService, never()).upload(any(), any(), any());
+    }
+
+    @Test
     void publishImageUpload_ioError_returns500() throws Exception {
         when(imageUploadService.upload(any(), any(), any()))
             .thenThrow(new IOException("disk read failed"));

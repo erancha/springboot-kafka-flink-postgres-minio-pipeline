@@ -31,6 +31,9 @@ public class EventController {
 
   private static final Logger log = LoggerFactory.getLogger(EventController.class);
 
+  // Cap on stored image bytes; below the 20 MB Spring multipart limit, which only bounds heap.
+  private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
+
   @Value("${IMAGE_URL_ALLOWED_HOSTS:}")
   private String allowedImageHosts;
 
@@ -101,12 +104,34 @@ public class EventController {
     }
   }
 
-  /** Uploads the file to object storage, then publishes a pointer event to Kafka; returns the assigned id and timestamp. */
-  @PostMapping(path = "/events/image-upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public EventResponse publishImageUpload(@RequestParam("file") MultipartFile file) throws IOException {
+  /**
+   * Rejects uploads that are not storable images: empty bodies, a missing or non-image/*
+   * Content-Type, or bodies above the size cap. Content-Type is client-supplied, so this bounds
+   * what gets stored without authenticating the bytes.
+   *
+   * TODO: the backend (Spring Boot) and Flink (not Spring Boot) currently duplicate these image
+   * rules; a module shared by both would enforce one definition instead of two parallel copies.
+   */
+  private void validateImageFile(MultipartFile file) {
     if (file.isEmpty()) {
       throw new IllegalArgumentException("file is required");
     }
+    String contentType = file.getContentType();
+    if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+      throw new IllegalArgumentException(
+          "file must be an image (Content-Type="
+              + (contentType == null ? "<absent>" : contentType) + ")");
+    }
+    if (file.getSize() > MAX_IMAGE_BYTES) {
+      throw new IllegalArgumentException(
+          "file exceeds " + (MAX_IMAGE_BYTES / 1024 / 1024) + " MB cap");
+    }
+  }
+
+  /** Uploads the file to object storage, then publishes a pointer event to Kafka; returns the assigned id and timestamp. */
+  @PostMapping(path = "/events/image-upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public EventResponse publishImageUpload(@RequestParam("file") MultipartFile file) throws IOException {
+    validateImageFile(file);
     UUID id = UUID.randomUUID();
     Instant now = Instant.now();
     log.info("image upload received: id={} filename={} contentType={} size={}B",
