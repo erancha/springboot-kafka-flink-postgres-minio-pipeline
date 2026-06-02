@@ -171,6 +171,38 @@ class EventControllerTest {
     }
 
     @Test
+    void publishImageUpload_kafkaFailure_deletesOrphanedObjectAndReturns503() throws Exception {
+        when(imageUploadService.upload(any(), any(), any()))
+            .thenReturn("images/2026-05-16/test-id.jpg");
+        doThrow(new KafkaPublishException("broker down", new RuntimeException()))
+            .when(eventProducer).send(any());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isServiceUnavailable());
+
+        verify(imageUploadService).delete("images/2026-05-16/test-id.jpg");
+    }
+
+    @Test
+    void publishImageUpload_kafkaFailureAndCleanupFails_stillReturns503() throws Exception {
+        when(imageUploadService.upload(any(), any(), any()))
+            .thenReturn("images/2026-05-16/test-id.jpg");
+        doThrow(new KafkaPublishException("broker down", new RuntimeException()))
+            .when(eventProducer).send(any());
+        doThrow(new ObjectStoreException("delete failed", new RuntimeException()))
+            .when(imageUploadService).delete(any());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isServiceUnavailable());
+    }
+
+    @Test
     void publishEvent_kafkaSendFailure_returns503() throws Exception {
         doThrow(new KafkaPublishException("broker down", new RuntimeException()))
                 .when(eventProducer).send(any());

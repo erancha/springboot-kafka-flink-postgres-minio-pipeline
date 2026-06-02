@@ -137,12 +137,24 @@ public class EventController {
     log.info("image upload received: id={} filename={} contentType={} size={}B",
         id, file.getOriginalFilename(), file.getContentType(), file.getSize());
     String objectKey = imageUploadService.upload(id, now, file);
-    eventProducer.send(Map.of(
-        "id", id.toString(),
-        "eventType", "IMAGE",
-        "eventTime", now.toString(),
-        "source", "ui",
-        "imageObjectKey", objectKey));
+    try {
+      eventProducer.send(Map.of(
+          "id", id.toString(),
+          "eventType", "IMAGE",
+          "eventTime", now.toString(),
+          "source", "ui",
+          "imageObjectKey", objectKey));
+    } catch (RuntimeException publishFailure) {
+      // Delete the now-orphaned object so a failed publish does not leak storage. Best-effort —
+      // a failed cleanup must not mask the original publish failure.
+      try {
+        imageUploadService.delete(objectKey);
+      } catch (RuntimeException cleanupFailure) {
+        log.error("Orphaned object {} left after publish failure; cleanup also failed", objectKey,
+            cleanupFailure);
+      }
+      throw publishFailure;
+    }
     return new EventResponse(id.toString(), now.toString());
   }
 }

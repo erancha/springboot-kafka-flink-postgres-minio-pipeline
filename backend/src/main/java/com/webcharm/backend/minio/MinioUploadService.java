@@ -4,6 +4,7 @@ import com.webcharm.backend.storage.ImageUploadService;
 import com.webcharm.backend.storage.ObjectStoreException;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
@@ -14,7 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-/** Uploads a multipart image to MinIO and returns the resulting object key. */
+/** Stores multipart images in MinIO and removes them by object key. */
 @Service
 public class MinioUploadService implements ImageUploadService {
 
@@ -52,6 +53,16 @@ public class MinioUploadService implements ImageUploadService {
       }
     }
     return objectKey;
+  }
+
+  @Override
+  public void delete(String objectKey) {
+    try {
+      minioClient.removeObject(
+          RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());
+    } catch (Exception e) {
+      throw new ObjectStoreException("MinIO delete failed for objectKey=" + objectKey, e);
+    }
   }
 
   private static String guessExtension(String contentType) {

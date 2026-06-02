@@ -78,4 +78,20 @@ class MinioUploadServiceTest {
     assertThrows(ObjectStoreException.class, () ->
         service.upload(UUID.randomUUID(), Instant.now(), file));
   }
+
+  @Test
+  void delete_removesObjectFromBucket() throws Exception {
+    service.delete("images/2026-05-16/some-id.jpg");
+
+    verify(minioClient).removeObject(any());
+  }
+
+  @Test
+  void delete_minioThrows_wrapsInObjectStoreException() throws Exception {
+    doThrow(new java.io.IOException("connection refused"))
+        .when(minioClient).removeObject(any());
+
+    assertThrows(ObjectStoreException.class, () ->
+        service.delete("images/2026-05-16/some-id.jpg"));
+  }
 }
