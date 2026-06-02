@@ -10,8 +10,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * JDBC writer for event_type_counts_5m. Upserts one row per (window_start, event_type) pair.
- * Three constructors: no-arg (reads env vars), url/user/password (opens a HikariCP pool),
- * Connection (accepts an already-open connection — used by unit tests and Testcontainers IT).
  */
 public class PostgresEventTypeCount5mWriter extends JdbcWriterBase<EventTypeCount5m> {
 
@@ -23,19 +21,16 @@ public class PostgresEventTypeCount5mWriter extends JdbcWriterBase<EventTypeCoun
           + "ON CONFLICT (window_start, event_type) DO UPDATE SET window_end = EXCLUDED.window_end, "
           + "event_count = EXCLUDED.event_count, updated_at = EXCLUDED.updated_at";
 
-  /** No-arg constructor: reads connection parameters from environment variables. */
   public PostgresEventTypeCount5mWriter() {
     super(envPool(), SQL);
     log.info("PostgresEventTypeCount5mWriter ready");
   }
 
-  /** Opens a HikariCP pool from the supplied credentials. */
   PostgresEventTypeCount5mWriter(String url, String user, String password) {
     super(createPool(url, user, password), SQL);
     log.info("PostgresEventTypeCount5mWriter ready");
   }
 
-  /** Accepts an already-open connection and prepares the upsert statement. */
   PostgresEventTypeCount5mWriter(Connection conn) {
     super(conn, SQL);
     log.info("PostgresEventTypeCount5mWriter ready");

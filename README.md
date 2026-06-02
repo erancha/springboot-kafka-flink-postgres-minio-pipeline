@@ -1,6 +1,13 @@
 # Real-time Data Pipeline
 
-## UI -> Spring Boot API -> Kafka -> Flink -> MinIO/Postgres
+**UI -> Spring Boot API -> Kafka -> Flink -> MinIO/Postgres**
+
+## Summary
+
+A production-leaning streaming pipeline that reflects a clear understanding of distributed-systems
+failure modes: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF
+defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
+including Testcontainers integration suites.
 
 ## Overview
 

@@ -11,18 +11,15 @@ import com.webcharm.pipeline.types.ProcessedEvent;
  */
 public class PostgresWriteFunction extends AbstractPostgresWriteFunction<ProcessedEvent> {
 
-  /** Builds a writer for the processed_events table, stamping the given stage on DLQ records. */
   public PostgresWriteFunction(DlqStage stage) {
     super(stage);
   }
 
-  /** Creates a writer that upserts into the processed_events table. */
   @Override
   protected JdbcWriter<ProcessedEvent> createWriter() {
     return new PostgresProcessedEventWriter();
   }
 
-  /** Returns a log-friendly string identifying record, e.g. "event id=<uuid>" for use in DLQ log messages. */
   @Override
   protected String logContextString(ProcessedEvent event) {
     return "event id=" + event.getId();

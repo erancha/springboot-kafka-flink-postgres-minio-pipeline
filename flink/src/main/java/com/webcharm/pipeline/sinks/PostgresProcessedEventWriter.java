@@ -12,8 +12,6 @@ import org.slf4j.LoggerFactory;
 /**
  * JDBC writer for processed_events. Payload sanitization is delegated to the parameterized
  * prepared statement (SQL injection prevention); no additional cleanPayload step is needed.
- * Three constructors: no-arg (reads env vars), url/user/password (opens a HikariCP pool),
- * Connection (accepts an already-open connection — used by unit tests and Testcontainers IT).
  */
 public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent> {
 
@@ -27,21 +25,18 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
 
   private final ObjectMapper mapper;
 
-  /** No-arg constructor: reads connection parameters from environment variables. */
   public PostgresProcessedEventWriter() {
     super(envPool(), SQL);
     this.mapper = new ObjectMapper();
     log.info("PostgresProcessedEventWriter ready");
   }
 
-  /** Opens a HikariCP pool from the supplied credentials. */
   PostgresProcessedEventWriter(String url, String user, String password) {
     super(createPool(url, user, password), SQL);
     this.mapper = new ObjectMapper();
     log.info("PostgresProcessedEventWriter ready");
   }
 
-  /** Accepts an already-open connection and prepares the upsert statement. */
   PostgresProcessedEventWriter(Connection conn) {
     super(conn, SQL);
     this.mapper = new ObjectMapper();

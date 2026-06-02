@@ -71,7 +71,6 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   private final int readTimeoutSecs;
   private final int executorThreads;
 
-  /** No-arg constructor; clients and the executor are built in open(). */
   public MinioAsyncImageFunction() {
     connectTimeoutSecs = EnvConfig.envInt("MINIO_FETCH_CONNECT_TIMEOUT_SECS", 10);
     readTimeoutSecs = EnvConfig.envInt("MINIO_FETCH_READ_TIMEOUT_SECS", 30);
@@ -122,7 +121,6 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     log.info("MinioAsyncImageFunction initialized: executorThreads={}", executorThreads);
   }
 
-  /** Submits enrichment without blocking the task thread; completes the ResultFuture from a callback. */
   @Override
   public void asyncInvoke(ProcessedEvent value, ResultFuture<EnrichResult> resultFuture) {
     enrich(value).whenComplete((result, err) -> {
@@ -237,17 +235,14 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     return EnrichResult.retryableFailure(record);
   }
 
-  /** Number of retryable enrichment failures classified so far; backs the Prometheus counter. */
   long retryableFailureCount() {
     return retryableFailures.getCount();
   }
 
-  /** Number of successful MinIO uploads performed; backs the Prometheus minio_uploads counter. */
   long uploadCount() {
     return uploadCount.getCount();
   }
 
-  /** Cumulative nanoseconds spent in successful MinIO putObject calls; backs minio_upload_nanos. */
   long uploadNanos() {
     return uploadNanos.getCount();
   }
@@ -311,7 +306,6 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     }
   }
 
-  /** Derives a file extension from the URL path; defaults to .jpg for unrecognized extensions. */
   private static String guessExtensionFromUrl(String url) {
     try {
       String path = URI.create(url).getPath().toLowerCase();
@@ -323,7 +317,6 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     return ".jpg";
   }
 
-  /** Maps a file extension to its MIME content-type; defaults to image/jpeg. */
   private static String guessContentType(String extension) {
     return switch (extension) {
       case ".png" -> "image/png";
@@ -333,7 +326,6 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     };
   }
 
-  /** Shuts down the owned executor (if any) on operator close. */
   @Override
   public void close() {
     if (ownedExecutor != null) {

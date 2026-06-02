@@ -250,7 +250,6 @@ public class StreamingJob {
         .build();
   }
 
-  /** Serializes DlqRecord to JSON bytes for the dead-letter Kafka topic. */
   private static class DlqRecordSerializer implements SerializationSchema<DlqRecord> {
     private transient ObjectMapper mapper;
 

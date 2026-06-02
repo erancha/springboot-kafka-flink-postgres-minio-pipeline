@@ -18,7 +18,6 @@ public class EnrichSplitFunction extends ProcessFunction<EnrichResult, Processed
   public static final OutputTag<DlqRecord> UPLOAD_ERROR_TAG =
       new OutputTag<DlqRecord>("minio-upload-error") {};
 
-  /** Routes a success to the main collector and any failure to the DLQ side output. */
   @Override
   public void processElement(EnrichResult value, Context ctx, Collector<ProcessedEvent> out) {
     if (value.isSuccess()) {

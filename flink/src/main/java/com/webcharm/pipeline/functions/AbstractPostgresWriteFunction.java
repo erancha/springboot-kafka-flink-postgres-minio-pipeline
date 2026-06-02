@@ -26,18 +26,15 @@ abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRe
   private transient ObjectMapper mapper;
   private final DlqStage stage;
 
-  /** Records the pipeline stage stamped onto every DlqRecord this function emits. */
   protected AbstractPostgresWriteFunction(DlqStage stage) {
     this.stage = stage;
   }
 
-  /** Returns a new writer instance; called once per task slot during open(). */
   protected abstract JdbcWriter<T> createWriter();
 
   /** Returns a log-friendly string identifying record (e.g. "event id=abc" or "count type=DATA start=..."). */
   protected abstract String logContextString(T record);
 
-  /** Initializes the writer and JSON serializer once per task slot. */
   @Override
   public void open(OpenContext openContext) {
     writer = createWriter();
@@ -59,7 +56,6 @@ abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRe
     }
   }
 
-  /** Closes the writer and releases its JDBC connection. */
   @Override
   public void close() throws Exception {
     if (writer != null)

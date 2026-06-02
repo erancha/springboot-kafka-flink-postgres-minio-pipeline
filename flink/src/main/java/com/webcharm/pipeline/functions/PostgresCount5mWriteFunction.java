@@ -11,18 +11,15 @@ import com.webcharm.pipeline.types.EventTypeCount5m;
  */
 public class PostgresCount5mWriteFunction extends AbstractPostgresWriteFunction<EventTypeCount5m> {
 
-  /** Builds a writer for the event_type_counts_5m table, stamping the given stage on DLQ records. */
   public PostgresCount5mWriteFunction(DlqStage stage) {
     super(stage);
   }
 
-  /** Creates a writer that upserts into the event_type_counts_5m table. */
   @Override
   protected JdbcWriter<EventTypeCount5m> createWriter() {
     return new PostgresEventTypeCount5mWriter();
   }
 
-  /** Returns a log-friendly string identifying record, e.g. "count type=<type> start=<window-start>" for use in DLQ log messages. */
   @Override
   protected String logContextString(EventTypeCount5m eventTypeCount) {
     return "count type=" + eventTypeCount.getEventType() + " start=" + eventTypeCount.getWindowStart();

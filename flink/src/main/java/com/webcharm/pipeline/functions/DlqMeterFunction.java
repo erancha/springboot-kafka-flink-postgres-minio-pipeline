@@ -18,7 +18,6 @@ public class DlqMeterFunction extends RichMapFunction<DlqRecord, DlqRecord> {
 
   private transient EnumMap<DlqStage, Counter> counters;
 
-  /** Builds the per-stage counters once per task slot. */
   @Override
   public void open(OpenContext openContext) {
     counters = createCounters();
@@ -37,7 +36,6 @@ public class DlqMeterFunction extends RichMapFunction<DlqRecord, DlqRecord> {
     return result;
   }
 
-  /** Increments the counter for the record's stage and passes the record through unchanged. */
   @Override
   public DlqRecord map(DlqRecord record) {
     counters.get(record.stage()).inc();

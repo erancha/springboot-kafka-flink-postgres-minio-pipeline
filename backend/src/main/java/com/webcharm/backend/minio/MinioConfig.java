@@ -43,12 +43,7 @@ class MinioConfig {
         .build();
   }
 
-  /**
-   * Builds the OkHttpClient backing the MinioClient with the given connect, write, and read
-   * timeouts in seconds. The minio SDK otherwise defaults every timeout to 5 minutes, which
-   * would let a slow MinIO block the calling request thread for that long with no app-level
-   * cap.
-   */
+  /** Builds the backing OkHttpClient, converting the second-valued timeouts to the SDK's millis. */
   static OkHttpClient httpClient(int connectTimeoutSecs, int writeTimeoutSecs,
       int readTimeoutSecs) {
     return HttpUtils.newDefaultHttpClient(
