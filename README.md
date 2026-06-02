@@ -1,5 +1,7 @@
 # Real-time Data Pipeline
 
+[![CI](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml)
+
 **UI -> Spring Boot API -> Kafka -> Flink -> MinIO/Postgres**
 
 ## Summary
