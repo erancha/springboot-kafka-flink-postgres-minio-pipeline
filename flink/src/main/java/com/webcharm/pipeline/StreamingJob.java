@@ -8,16 +8,16 @@ import com.webcharm.pipeline.functions.DlqMeterFunction;
 import com.webcharm.pipeline.functions.EnrichSplitFunction;
 import com.webcharm.pipeline.functions.MinioAsyncImageFunction;
 import com.webcharm.pipeline.functions.ParseEventFunction;
-import com.webcharm.pipeline.functions.PostgresCount5mWriteFunction;
-import com.webcharm.pipeline.functions.PostgresImageSizeBucketCount5mWriteFunction;
+import com.webcharm.pipeline.functions.PostgresCount99mWriteFunction;
+import com.webcharm.pipeline.functions.PostgresImageSizeBucketCount99mWriteFunction;
 import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.EventType;
-import com.webcharm.pipeline.types.EventTypeCount5m;
+import com.webcharm.pipeline.types.EventTypeCount99m;
 import com.webcharm.pipeline.types.ImageSizeBucket;
-import com.webcharm.pipeline.types.ImageSizeBucketCount5m;
+import com.webcharm.pipeline.types.ImageSizeBucketCount99m;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
@@ -60,6 +60,13 @@ import java.util.stream.StreamSupport;
  */
 public class StreamingJob {
   private static final Logger log = LoggerFactory.getLogger(StreamingJob.class);
+
+  // Tumbling-window sizes for the two pre-aggregations, kept as independent knobs so one can be
+  // tuned without disturbing the other. The "99m" token in the windowed-aggregate identifiers
+  // (types, tables, operators) is a fixed marker that the value is a window output, not a literal
+  // window length — the real size lives in these constants.
+  private static final Duration EVENT_TYPE_COUNT_WINDOW = Duration.ofMinutes(5);
+  private static final Duration IMAGE_SIZE_WINDOW = Duration.ofMinutes(5);
 
   /** Runs startup pre-flight checks, then builds the job graph and submits it to the Flink runtime. */
   public static void main(String[] args) throws Exception {
@@ -147,12 +154,12 @@ public class StreamingJob {
 
     // Payload fields are stripped before keying and windowing to keep checkpoint state small.
     DataStream<DlqRecord> countErrors = buildWindowedCounts(timedEvents)
-        .process(new PostgresCount5mWriteFunction(DlqStage.COUNT_POSTGRES))
-        .name("counts-5m-to-postgres");
+        .process(new PostgresCount99mWriteFunction(DlqStage.COUNT_POSTGRES))
+        .name("counts-99m-to-postgres");
 
     DataStream<DlqRecord> imageSizeCountErrors = buildImageSizeBuckets(imagePipeline.getSideOutput(EnrichSplitFunction.SIZE_SAMPLE_TAG))
-        .process(new PostgresImageSizeBucketCount5mWriteFunction(DlqStage.IMAGE_SIZE_COUNT_POSTGRES))
-        .name("image-size-buckets-5m-to-postgres");
+        .process(new PostgresImageSizeBucketCount99mWriteFunction(DlqStage.IMAGE_SIZE_COUNT_POSTGRES))
+        .name("image-size-buckets-99m-to-postgres");
 
     // All dead-letter paths converge into one Kafka producer. union is type-safe (every input is
     // DataStream<DlqRecord>) and behavior-preserving: each record still reaches events-dlq, and
@@ -172,55 +179,55 @@ public class StreamingJob {
 
   /**
    * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time
-   * windows, and emits one EventTypeCount5m per (type, window) pair when each window closes.
+   * windows, and emits one EventTypeCount99m per (type, window) pair when each window closes.
    */
-  static DataStream<EventTypeCount5m> buildWindowedCounts(DataStream<ProcessedEvent> withWatermarks) {
+  static DataStream<EventTypeCount99m> buildWindowedCounts(DataStream<ProcessedEvent> withWatermarks) {
     return withWatermarks
         .map(e -> new ProcessedEvent(
             e.getId(), e.getEventType(), e.getEventTime(), e.getSource(),
             null, null, null, e.getDate()))
         .name("strip-for-window")
         .keyBy(ProcessedEvent::getEventType)
-        .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
-        .process(new ProcessWindowFunction<ProcessedEvent, EventTypeCount5m, String, TimeWindow>() {
+        .window(TumblingEventTimeWindows.of(EVENT_TYPE_COUNT_WINDOW))
+        .process(new ProcessWindowFunction<ProcessedEvent, EventTypeCount99m, String, TimeWindow>() {
           @Override
           public void process(String key, Context context, Iterable<ProcessedEvent> elements,
-              Collector<EventTypeCount5m> out) {
+              Collector<EventTypeCount99m> out) {
             long count = StreamSupport.stream(elements.spliterator(), false).count();
-            out.collect(new EventTypeCount5m(
+            out.collect(new EventTypeCount99m(
                 Instant.ofEpochMilli(context.window().getStart()),
                 Instant.ofEpochMilli(context.window().getEnd()),
                 key,
                 count));
           }
         })
-        .name("count-by-type-5m");
+        .name("count-by-type-99m");
   }
 
   /**
    * Keys image size samples by bucket label, applies 5-minute tumbling event-time windows, and
-   * emits one ImageSizeBucketCount5m per (bucket, window) pair when each window closes.
+   * emits one ImageSizeBucketCount99m per (bucket, window) pair when each window closes.
    */
-  static DataStream<ImageSizeBucketCount5m> buildImageSizeBuckets(
+  static DataStream<ImageSizeBucketCount99m> buildImageSizeBuckets(
       DataStream<ImageSizeBucket> sizeSamples) {
     return sizeSamples
         // Flink rejects an enum as a key type, so key by the label; the explicit key type is
         // needed because a lambda's return type is not inferable.
         .keyBy(bucket -> bucket.label(), TypeInformation.of(String.class))
-        .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
-        .process(new ProcessWindowFunction<ImageSizeBucket, ImageSizeBucketCount5m, String, TimeWindow>() {
+        .window(TumblingEventTimeWindows.of(IMAGE_SIZE_WINDOW))
+        .process(new ProcessWindowFunction<ImageSizeBucket, ImageSizeBucketCount99m, String, TimeWindow>() {
           @Override
           public void process(String bucketLabel, Context context, Iterable<ImageSizeBucket> elements,
-              Collector<ImageSizeBucketCount5m> out) {
+              Collector<ImageSizeBucketCount99m> out) {
             long count = StreamSupport.stream(elements.spliterator(), false).count();
-            out.collect(new ImageSizeBucketCount5m(
+            out.collect(new ImageSizeBucketCount99m(
                 Instant.ofEpochMilli(context.window().getStart()),
                 Instant.ofEpochMilli(context.window().getEnd()),
                 bucketLabel,
                 count));
           }
         })
-        .name("image-size-buckets-5m");
+        .name("image-size-buckets-99m");
   }
 
   /**

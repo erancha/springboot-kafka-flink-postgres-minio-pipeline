@@ -1,8 +1,8 @@
 package com.webcharm.pipeline;
 
-import com.webcharm.pipeline.types.EventTypeCount5m;
+import com.webcharm.pipeline.types.EventTypeCount99m;
 import com.webcharm.pipeline.types.ImageSizeBucket;
-import com.webcharm.pipeline.types.ImageSizeBucketCount5m;
+import com.webcharm.pipeline.types.ImageSizeBucketCount99m;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -53,15 +53,15 @@ class StreamingJobIT {
                     .withTimestampAssigner((e, t) -> e.getEventTime().toEpochMilli()))
             .name("test-source");
 
-        List<EventTypeCount5m> results = new ArrayList<>();
-        try (CloseableIterator<EventTypeCount5m> it =
+        List<EventTypeCount99m> results = new ArrayList<>();
+        try (CloseableIterator<EventTypeCount99m> it =
                 StreamingJob.buildWindowedCounts(source).executeAndCollect()) {
             it.forEachRemaining(results::add);
         }
 
         Map<String, Long> window1 = results.stream()
             .filter(r -> r.getWindowStart().equals(base))
-            .collect(Collectors.toMap(EventTypeCount5m::getEventType, EventTypeCount5m::getEventCount));
+            .collect(Collectors.toMap(EventTypeCount99m::getEventType, EventTypeCount99m::getEventCount));
 
         assertEquals(3L, window1.get("DATA"),  "DATA count in [00:00, 00:05)");
         assertEquals(2L, window1.get("IMAGE"), "IMAGE count in [00:00, 00:05)");
@@ -92,15 +92,15 @@ class StreamingJobIT {
             .returns(TypeInformation.of(ImageSizeBucket.class))
             .name("test-size-samples");
 
-        List<ImageSizeBucketCount5m> results = new ArrayList<>();
-        try (CloseableIterator<ImageSizeBucketCount5m> it =
+        List<ImageSizeBucketCount99m> results = new ArrayList<>();
+        try (CloseableIterator<ImageSizeBucketCount99m> it =
                 StreamingJob.buildImageSizeBuckets(samples).executeAndCollect()) {
             it.forEachRemaining(results::add);
         }
 
         Map<String, Long> window1 = results.stream()
             .filter(r -> r.getWindowStart().equals(base))
-            .collect(Collectors.toMap(ImageSizeBucketCount5m::getBucket, ImageSizeBucketCount5m::getImageCount));
+            .collect(Collectors.toMap(ImageSizeBucketCount99m::getBucket, ImageSizeBucketCount99m::getImageCount));
 
         assertEquals(2L, window1.get("<=1MB"), "<=1MB count in [00:00, 00:05)");
         assertEquals(1L, window1.get("<=5MB"), "<=5MB count in [00:00, 00:05)");

@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.sinks;
 
-import com.webcharm.pipeline.types.EventTypeCount5m;
+import com.webcharm.pipeline.types.EventTypeCount99m;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Timestamp;
@@ -9,35 +9,35 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * JDBC writer for event_type_counts_5m. Upserts one row per (window_start, event_type) pair.
+ * JDBC writer for event_type_counts_99m. Upserts one row per (window_start, event_type) pair.
  */
-public class PostgresEventTypeCount5mWriter extends JdbcWriterBase<EventTypeCount5m> {
+public class PostgresEventTypeCount99mWriter extends JdbcWriterBase<EventTypeCount99m> {
 
-  private static final Logger log = LoggerFactory.getLogger(PostgresEventTypeCount5mWriter.class);
+  private static final Logger log = LoggerFactory.getLogger(PostgresEventTypeCount99mWriter.class);
 
   private static final String SQL =
-      "INSERT INTO event_type_counts_5m (window_start, window_end, event_type, event_count, updated_at) "
+      "INSERT INTO event_type_counts_99m (window_start, window_end, event_type, event_count, updated_at) "
           + "VALUES (?, ?, ?, ?, ?) "
           + "ON CONFLICT (window_start, event_type) DO UPDATE SET window_end = EXCLUDED.window_end, "
           + "event_count = EXCLUDED.event_count, updated_at = EXCLUDED.updated_at";
 
-  public PostgresEventTypeCount5mWriter() {
+  public PostgresEventTypeCount99mWriter() {
     super(envPool(), SQL);
-    log.info("PostgresEventTypeCount5mWriter ready");
+    log.info("PostgresEventTypeCount99mWriter ready");
   }
 
-  PostgresEventTypeCount5mWriter(String url, String user, String password) {
+  PostgresEventTypeCount99mWriter(String url, String user, String password) {
     super(createPool(url, user, password), SQL);
-    log.info("PostgresEventTypeCount5mWriter ready");
+    log.info("PostgresEventTypeCount99mWriter ready");
   }
 
-  PostgresEventTypeCount5mWriter(Connection conn) {
+  PostgresEventTypeCount99mWriter(Connection conn) {
     super(conn, SQL);
-    log.info("PostgresEventTypeCount5mWriter ready");
+    log.info("PostgresEventTypeCount99mWriter ready");
   }
 
   @Override
-  public void write(EventTypeCount5m value) throws IOException {
+  public void write(EventTypeCount99m value) throws IOException {
     executeWithRetry(sqlStmt -> {
       sqlStmt.setTimestamp(1, Timestamp.from(value.getWindowStart()));
       sqlStmt.setTimestamp(2, Timestamp.from(value.getWindowEnd()));

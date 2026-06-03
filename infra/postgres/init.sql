@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_processed_events_type_time
 CREATE INDEX IF NOT EXISTS idx_processed_events_inserted_at
   ON processed_events (inserted_at DESC);
 
-CREATE TABLE IF NOT EXISTS event_type_counts_5m (
+CREATE TABLE IF NOT EXISTS event_type_counts_99m (
   window_start TIMESTAMPTZ NOT NULL,
   window_end TIMESTAMPTZ NOT NULL,
   event_type TEXT NOT NULL,
@@ -23,13 +23,13 @@ CREATE TABLE IF NOT EXISTS event_type_counts_5m (
   PRIMARY KEY (window_start, event_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_event_type_counts_5m_window_start
-  ON event_type_counts_5m (window_start DESC);
+CREATE INDEX IF NOT EXISTS idx_event_type_counts_99m_window_start
+  ON event_type_counts_99m (window_start DESC);
 
-CREATE INDEX IF NOT EXISTS idx_event_type_counts_5m_event_type
-  ON event_type_counts_5m (event_type);
+CREATE INDEX IF NOT EXISTS idx_event_type_counts_99m_event_type
+  ON event_type_counts_99m (event_type);
 
-CREATE TABLE IF NOT EXISTS image_size_buckets_5m (
+CREATE TABLE IF NOT EXISTS image_size_buckets_99m (
   window_start TIMESTAMPTZ NOT NULL,
   window_end TIMESTAMPTZ NOT NULL,
   bucket TEXT NOT NULL,
@@ -38,5 +38,5 @@ CREATE TABLE IF NOT EXISTS image_size_buckets_5m (
   PRIMARY KEY (window_start, bucket)
 );
 
-CREATE INDEX IF NOT EXISTS idx_image_size_buckets_5m_window_start
-  ON image_size_buckets_5m (window_start DESC);
+CREATE INDEX IF NOT EXISTS idx_image_size_buckets_99m_window_start
+  ON image_size_buckets_99m (window_start DESC);

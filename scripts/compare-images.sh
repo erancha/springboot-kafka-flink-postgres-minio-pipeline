@@ -23,9 +23,9 @@ POSTGRES_COUNT=$(compose exec -T postgres psql -U postgres -d warehouse -t -c "S
 echo "  $POSTGRES_COUNT records"
 echo
 
-# Count images aggregated by Flink in real-time (event_type_counts_5m)
-echo "Image events aggregated by Flink (event_type_counts_5m):"
-FLINK_COUNT=$(compose exec -T postgres psql -U postgres -d warehouse -t -c "SELECT COALESCE(SUM(event_count), 0) FROM event_type_counts_5m WHERE event_type='IMAGE';")
+# Count images aggregated by Flink in real-time (event_type_counts_99m)
+echo "Image events aggregated by Flink (event_type_counts_99m):"
+FLINK_COUNT=$(compose exec -T postgres psql -U postgres -d warehouse -t -c "SELECT COALESCE(SUM(event_count), 0) FROM event_type_counts_99m WHERE event_type='IMAGE';")
 echo "  $FLINK_COUNT events (summed across all 5-minute windows)"
 echo
 

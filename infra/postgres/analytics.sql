@@ -24,14 +24,14 @@ FROM processed_events
 GROUP BY 1, 2
 ORDER BY 1 DESC, 2;
 
--- Real-time: 5-minute event count per type (pre-aggregated by Flink, stored in event_type_counts_5m)
+-- Real-time: 5-minute event count per type (pre-aggregated by Flink, stored in event_type_counts_99m)
 -- This table is populated in real time by Flink's 5-minute tumbling window job
 SELECT window_start, window_end, event_type, event_count
-FROM event_type_counts_5m
+FROM event_type_counts_99m
 ORDER BY window_start DESC, event_type;
 
 -- Real-time: 5-minute stored-image count per size bucket (pre-aggregated by Flink, stored in
--- image_size_buckets_5m)
+-- image_size_buckets_99m)
 SELECT window_start, window_end, bucket, image_count
-FROM image_size_buckets_5m
+FROM image_size_buckets_99m
 ORDER BY window_start DESC, bucket;

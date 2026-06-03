@@ -14,12 +14,12 @@ These scan the `processed_events` table and run standard SQL aggregations. Flink
 
 Flink computes continuously; queries read pre-computed results (no query-time latency):
 
-- 5-minute tumbling-window event count per `eventType` (stored in `event_type_counts_5m`)
-- 5-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_5m`)
+- 5-minute tumbling-window event count per `eventType` (stored in `event_type_counts_99m`)
+- 5-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_99m`)
 
 **Flink windowing behavior:**
 
-The 5-minute tumbling-window aggregation ([`StreamingJob.buildWindowedCounts`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)) uses Flink's default behavior: it only emits window results for windows that contain at least one event. Empty windows are not materialized. This means the `event_type_counts_5m` table will only have rows for time periods when events actually arrived. If there are no `DATA` events in a 5-minute window, that window will not appear in the results, even if the same period had `IMAGE` events. This is standard Flink behavior and conserves storage; to include all windows (including empty ones), the job would need explicit late-firing or allowed lateness policies.
+The 5-minute tumbling-window aggregation ([`StreamingJob.buildWindowedCounts`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)) uses Flink's default behavior: it only emits window results for windows that contain at least one event. Empty windows are not materialized. This means the `event_type_counts_99m` table will only have rows for time periods when events actually arrived. If there are no `DATA` events in a 5-minute window, that window will not appear in the results, even if the same period had `IMAGE` events. This is standard Flink behavior and conserves storage; to include all windows (including empty ones), the job would need explicit late-firing or allowed lateness policies.
 
 ## Running the queries
 
