@@ -7,9 +7,12 @@
 ## Summary
 
 A production-leaning streaming pipeline that treats distributed-systems failure modes as first-class
-concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF
+concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF (*)
 defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
 including Testcontainers integration suites.
+
+(*) SSRF (Server-Side Request Forgery): blocking attacker-supplied image URLs from reaching
+internal hosts — e.g. an `IMAGE` event with `http://169.254.169.254/` to probe cloud metadata.
 
 ## Overview
 
