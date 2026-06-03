@@ -75,13 +75,14 @@
 
   <rect x="266" y="200" width="452" height="190" class="stream-job" rx="5"/>
   <text x="492" y="221" class="region-label" text-anchor="middle" style="font-size: 12px;">StreamingJob</text>
-  <text x="281" y="246" class="step">① consume → parse JSON → assign event-time watermarks</text>
-  <text x="281" y="270" class="step">② DATA → write to Postgres   <tspan class="retry">[sync JDBC · ↻ on transient]</tspan></text>
-  <text x="281" y="294" class="step">③ IMAGE → always to MinIO (URL: fetch + clone) → write key to Postgres</text>
-  <text x="299" y="308" class="retry">[async I/O · ↻ on transient]</text>
-  <text x="281" y="332" class="step">④ all events → key by type → 5-min tumbling window → write counts</text>
-  <text x="281" y="362" class="step">⑤ any-stage failure → dead-letter to Kafka</text>
-  <text x="299" y="376" class="retry" style="fill: #c0392b;">[events-dlq · at-least-once]</text>
+  <text x="281" y="244" class="step">① consume → parse JSON → assign event-time watermarks</text>
+  <text x="281" y="265" class="step">② DATA → write to Postgres   <tspan class="retry">[sync JDBC · ↻ on transient]</tspan></text>
+  <text x="281" y="286" class="step">③ IMAGE → always to MinIO (URL: fetch + clone) → write key to Postgres</text>
+  <text x="299" y="299" class="retry">[async I/O · ↻ on transient]</text>
+  <text x="281" y="320" class="step">④ all events → key by type → tumbling window → per-type counts</text>
+  <text x="281" y="341" class="step">⑤ image sizes → bucket → tumbling window → size histogram</text>
+  <text x="281" y="362" class="step">⑥ any-stage failure → dead-letter to Kafka</text>
+  <text x="299" y="375" class="retry" style="fill: #c0392b;">[events-dlq · at-least-once]</text>
 
   <!-- Prometheus (observability, right of Flink) -->
   <rect x="778" y="210" width="166" height="90" class="observ" rx="5"/>
@@ -100,11 +101,12 @@
   <text x="122" y="540" class="step" text-anchor="middle">layout: {date}/{uuid}.ext</text>
 
   <rect x="250" y="430" width="255" height="115" class="sink" rx="5"/>
-  <text x="377" y="453" class="box-title" text-anchor="middle">PostgreSQL</text>
-  <text x="377" y="475" class="resp" text-anchor="middle">analytics warehouse</text>
-  <text x="377" y="491" class="resp" text-anchor="middle">processed events + 5-min counts</text>
-  <text x="377" y="511" class="cfg" text-anchor="middle" style="font-size: 9px;">Port · env:POSTGRES_PORT · db env:POSTGRES_DB</text>
-  <text x="377" y="533" class="step" text-anchor="middle" style="font-size: 9px;">tables: processed_events · event_type_counts_5m</text>
+  <text x="377" y="451" class="box-title" text-anchor="middle">PostgreSQL</text>
+  <text x="377" y="471" class="resp" text-anchor="middle">analytics warehouse</text>
+  <text x="377" y="486" class="resp" text-anchor="middle">processed events + windowed aggregates</text>
+  <text x="377" y="505" class="cfg" text-anchor="middle" style="font-size: 9px;">Port · env:POSTGRES_PORT · db env:POSTGRES_DB</text>
+  <text x="377" y="524" class="step" text-anchor="middle" style="font-size: 9px;">tables: processed_events</text>
+  <text x="377" y="537" class="step" text-anchor="middle" style="font-size: 8.5px;">event_type_counts_99m · image_size_buckets_99m</text>
 
   <rect x="560" y="435" width="150" height="110" class="observ" rx="5"/>
   <text x="635" y="460" class="box-title" text-anchor="middle">Grafana</text>
@@ -136,7 +138,7 @@
   <text x="188" y="403" class="alabel">image upload</text>
   <!-- StreamingJob → Postgres : sync JDBC + retry -->
   <path d="M 470 390 L 420 428" class="sync" marker-end="url(#ah)"/>
-  <text x="465" y="405" class="alabel">rows + counts</text>
+  <text x="465" y="405" class="alabel">rows + aggregates</text>
   <!-- Prometheus → Flink : scrape (observe) -->
   <path d="M 776 252 L 731 252" class="observe" marker-end="url(#ah)"/>
   <text x="861" y="204" class="alabel" text-anchor="middle">scrape metrics</text>
