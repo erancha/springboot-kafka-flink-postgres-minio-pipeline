@@ -178,8 +178,9 @@ public class StreamingJob {
   }
 
   /**
-   * Strips binary and payload fields, keys by eventType, applies 5-minute tumbling event-time
-   * windows, and emits one EventTypeCount99m per (type, window) pair when each window closes.
+   * Strips binary and payload fields, keys by eventType, applies the EVENT_TYPE_COUNT_WINDOW
+   * tumbling event-time window, and emits one EventTypeCount99m per (type, window) pair when each
+   * window closes.
    */
   static DataStream<EventTypeCount99m> buildWindowedCounts(DataStream<ProcessedEvent> withWatermarks) {
     return withWatermarks
@@ -205,8 +206,8 @@ public class StreamingJob {
   }
 
   /**
-   * Keys image size samples by bucket label, applies 10-minute tumbling event-time windows, and
-   * emits one ImageSizeBucketCount99m per (bucket, window) pair when each window closes.
+   * Keys image size samples by bucket label, applies the IMAGE_SIZE_WINDOW tumbling event-time
+   * window, and emits one ImageSizeBucketCount99m per (bucket, window) pair when each window closes.
    */
   static DataStream<ImageSizeBucketCount99m> buildImageSizeBuckets(
       DataStream<ImageSizeBucket> sizeSamples) {
