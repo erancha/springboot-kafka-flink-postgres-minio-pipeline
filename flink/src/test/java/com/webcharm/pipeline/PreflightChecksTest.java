@@ -68,4 +68,16 @@ class PreflightChecksTest {
         .thenThrow(new SQLException("relation \"event_type_counts_5m\" does not exist", "42P01"));
     assertThrows(SQLException.class, () -> PreflightChecks.verifyPostgresSchema(conn));
   }
+
+  @Test
+  void imageSizeBucketTableMissing_throws() throws Exception {
+    Connection conn = mock(Connection.class);
+    Statement st = mock(Statement.class);
+    when(conn.createStatement()).thenReturn(st);
+    when(st.execute(contains("processed_events"))).thenReturn(false);
+    when(st.execute(contains("event_type_counts_5m"))).thenReturn(false);
+    when(st.execute(contains("image_size_buckets_5m")))
+        .thenThrow(new SQLException("relation \"image_size_buckets_5m\" does not exist", "42P01"));
+    assertThrows(SQLException.class, () -> PreflightChecks.verifyPostgresSchema(conn));
+  }
 }

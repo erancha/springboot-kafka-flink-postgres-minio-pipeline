@@ -9,18 +9,22 @@ import com.webcharm.pipeline.functions.EnrichSplitFunction;
 import com.webcharm.pipeline.functions.MinioAsyncImageFunction;
 import com.webcharm.pipeline.functions.ParseEventFunction;
 import com.webcharm.pipeline.functions.PostgresCount5mWriteFunction;
+import com.webcharm.pipeline.functions.PostgresImageSizeBucketCount5mWriteFunction;
 import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.EventType;
 import com.webcharm.pipeline.types.EventTypeCount5m;
+import com.webcharm.pipeline.types.ImageSizeBucket;
+import com.webcharm.pipeline.types.ImageSizeBucketCount5m;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ExternalizedCheckpointRetention;
 import org.apache.flink.configuration.RestartStrategyOptions;
@@ -109,8 +113,7 @@ public class StreamingJob {
     // ===================================
 
     // =========== unhappy path: unparseable messages (bad JSON, missing fields) ===========
-    DataStream<DlqRecord> parseErrors =
-        parsedEvents.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG);
+    DataStream<DlqRecord> parseErrors = parsedEvents.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG);
 
     // =========== happy path: stamp parsed events with event-time watermarks ===========
     DataStream<ProcessedEvent> timedEvents = parsedEvents
@@ -129,8 +132,7 @@ public class StreamingJob {
         timedEvents.filter(e -> EventType.IMAGE.equals(e.getEventType())));
 
     // =========== unhappy path: image fetch/upload failures or exhausted transient ===========
-    DataStream<DlqRecord> minioErrors =
-        imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG);
+    DataStream<DlqRecord> minioErrors = imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG);
 
     // Postgres write is a side effect; replay cannot fix a bad payload, so PermanentJdbcException
     // is emitted as a DlqRecord on the main output rather than propagated.
@@ -148,13 +150,17 @@ public class StreamingJob {
         .process(new PostgresCount5mWriteFunction(DlqStage.COUNT_POSTGRES))
         .name("counts-5m-to-postgres");
 
+    DataStream<DlqRecord> imageSizeCountErrors = buildImageSizeBuckets(imagePipeline.getSideOutput(EnrichSplitFunction.SIZE_SAMPLE_TAG))
+        .process(new PostgresImageSizeBucketCount5mWriteFunction(DlqStage.IMAGE_SIZE_COUNT_POSTGRES))
+        .name("image-size-buckets-5m-to-postgres");
+
     // All dead-letter paths converge into one Kafka producer. union is type-safe (every input is
-    // DataStream<DlqRecord>) and behaviour-preserving: each record still reaches events-dlq, and
+    // DataStream<DlqRecord>) and behavior-preserving: each record still reaches events-dlq, and
     // its DlqStage carries the origin that the per-source sink names used to encode. A single
-    // sink couples DLQ backpressure across the five branches, but dead-letter volume is low by
+    // sink couples DLQ backpressure across the branches, but dead-letter volume is low by
     // nature (only failures), so this is acceptable and is the standard pattern.
     parseErrors
-        .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors)
+        .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors, imageSizeCountErrors)
         .map(new DlqMeterFunction())
         .name("dlq-meter")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
@@ -192,6 +198,32 @@ public class StreamingJob {
   }
 
   /**
+   * Keys image size samples by bucket label, applies 5-minute tumbling event-time windows, and
+   * emits one ImageSizeBucketCount5m per (bucket, window) pair when each window closes.
+   */
+  static DataStream<ImageSizeBucketCount5m> buildImageSizeBuckets(
+      DataStream<ImageSizeBucket> sizeSamples) {
+    return sizeSamples
+        // Flink rejects an enum as a key type, so key by the label; the explicit key type is
+        // needed because a lambda's return type is not inferable.
+        .keyBy(bucket -> bucket.label(), TypeInformation.of(String.class))
+        .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
+        .process(new ProcessWindowFunction<ImageSizeBucket, ImageSizeBucketCount5m, String, TimeWindow>() {
+          @Override
+          public void process(String bucketLabel, Context context, Iterable<ImageSizeBucket> elements,
+              Collector<ImageSizeBucketCount5m> out) {
+            long count = StreamSupport.stream(elements.spliterator(), false).count();
+            out.collect(new ImageSizeBucketCount5m(
+                Instant.ofEpochMilli(context.window().getStart()),
+                Instant.ofEpochMilli(context.window().getEnd()),
+                bucketLabel,
+                count));
+          }
+        })
+        .name("image-size-buckets-5m");
+  }
+
+  /**
    * Wires the IMAGE branch as a Flink async I/O operator (non-blocking fetch plus MinIO upload,
    * framework-managed exponential-backoff retry on transient failures) followed by a non-blocking
    * split. Returns the split operator whose main output is enriched events and whose
@@ -205,20 +237,18 @@ public class StreamingJob {
     int timeoutSecs = EnvConfig.envInt("MINIO_ASYNC_TIMEOUT_SECS", 120);
     int maxAttempts = EnvConfig.envInt("MINIO_ASYNC_MAX_ATTEMPTS", 3);
 
-    SerializablePredicate<Collection<EnrichResult>> retryable =
-        results -> results.stream().anyMatch(EnrichResult::isRetryable);
-    AsyncRetryStrategy<EnrichResult> retryStrategy =
-        new AsyncRetryStrategies.ExponentialBackoffDelayRetryStrategyBuilder<EnrichResult>(
-                maxAttempts, 1_000L, 4_000L, 2.0)
+    SerializablePredicate<Collection<EnrichResult>> retryable = results -> results.stream().anyMatch(EnrichResult::isRetryable);
+    AsyncRetryStrategy<EnrichResult> retryStrategy = new AsyncRetryStrategies.ExponentialBackoffDelayRetryStrategyBuilder<EnrichResult>(
+        maxAttempts, 1_000L, 4_000L, 2.0)
             .ifResult(retryable)
             .build();
 
     SingleOutputStreamOperator<EnrichResult> enriched = AsyncDataStream.unorderedWaitWithRetry(
-            imageEvents,
-            new MinioAsyncImageFunction(),
-            timeoutSecs, TimeUnit.SECONDS,
-            capacity,
-            retryStrategy)
+        imageEvents,
+        new MinioAsyncImageFunction(),
+        timeoutSecs, TimeUnit.SECONDS,
+        capacity,
+        retryStrategy)
         .name("minio-enrich-async");
 
     return enriched

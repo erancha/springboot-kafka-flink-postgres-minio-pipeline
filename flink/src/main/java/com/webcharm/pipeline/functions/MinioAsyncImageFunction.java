@@ -148,8 +148,12 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
    * never exceptionally.
    */
   CompletableFuture<EnrichResult> enrich(ProcessedEvent value) {
+    String bucket = EnvConfig.env("MINIO_BUCKET", "images");
     if (value.getImageObjectKey() != null) {
-      return CompletableFuture.completedFuture(EnrichResult.success(value));
+      // Backend already stored the bytes; read the size best-effort so a stat failure never fails this passthrough.
+      return CompletableFuture.supplyAsync(
+          () -> EnrichResult.success(value, statSizeBestEffort(bucket, value.getImageObjectKey())),
+          executor);
     }
     String url = value.getImageUrl();
     if (url == null || url.isBlank()) {
@@ -158,20 +162,20 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
               "IMAGE event has neither imageUrl nor imageObjectKey", Instant.now())));
     }
 
-    String bucket = EnvConfig.env("MINIO_BUCKET", "images");
     String date = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
     String extension = guessExtensionFromUrl(url);
     String objectKey = "images/" + date + "/" + value.getId() + extension;
     String contentType = guessContentType(extension);
 
     return CompletableFuture
-        .supplyAsync(() -> objectExistsUnchecked(bucket, objectKey), executor)
-        .thenCompose(exists -> exists
-            ? CompletableFuture.completedFuture(EnrichResult.success(withObjectKey(value, objectKey)))
+        .supplyAsync(() -> statSize(bucket, objectKey), executor)
+        .thenCompose(existingSize -> existingSize != null
+            ? CompletableFuture.completedFuture(
+                EnrichResult.success(withObjectKey(value, objectKey), existingSize))
             : fetch(url).thenComposeAsync(bytes -> {
                 putObjectUnchecked(bucket, objectKey, bytes, contentType);
                 return CompletableFuture.completedFuture(
-                    EnrichResult.success(withObjectKey(value, objectKey)));
+                    EnrichResult.success(withObjectKey(value, objectKey), (long) bytes.length));
               }, executor))
         .handle((res, err) -> err == null ? res : classify(value, err));
   }
@@ -256,18 +260,28 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     return c;
   }
 
-  /** statObject existence guard; NoSuchKey means absent, any other error is rethrown (retryable). */
-  private boolean objectExistsUnchecked(String bucket, String objectKey) {
+  /** Object size, or null if absent (NoSuchKey). Other errors propagate so the URL path retries. */
+  private Long statSize(String bucket, String objectKey) {
     try {
-      minio.statObject(StatObjectArgs.builder().bucket(bucket).object(objectKey).build());
-      return true;
+      return minio.statObject(StatObjectArgs.builder().bucket(bucket).object(objectKey).build()).size();
     } catch (ErrorResponseException e) {
       if ("NoSuchKey".equals(e.errorResponse().code())) {
-        return false;
+        return null;
       }
       throw new RuntimeException(e);
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  /** Like statSize but swallows every failure (returns null), so a passthrough never fails on a stat error. */
+  private Long statSizeBestEffort(String bucket, String objectKey) {
+    try {
+      return statSize(bucket, objectKey);
+    } catch (RuntimeException e) {
+      log.warn("Size stat failed for passthrough object {}; omitting from size histogram: {}",
+          objectKey, e.getMessage());
+      return null;
     }
   }
 

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
+import com.webcharm.pipeline.types.ImageSizeBucket;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -23,6 +24,7 @@ class EnrichSplitFunctionTest {
   private static final class Harness extends EnrichSplitFunction {
     final List<ProcessedEvent> main = new ArrayList<>();
     final List<DlqRecord> dlq = new ArrayList<>();
+    final List<ImageSizeBucket> sizeSamples = new ArrayList<>();
 
     void run(EnrichResult r) {
       Context ctx = new Context() {
@@ -30,6 +32,7 @@ class EnrichSplitFunctionTest {
         @Override public TimerService timerService() { return null; }
         @Override public <X> void output(OutputTag<X> tag, X val) {
           if (val instanceof DlqRecord d) dlq.add(d);
+          if (val instanceof ImageSizeBucket b) sizeSamples.add(b);
         }
       };
       Collector<ProcessedEvent> col = new Collector<>() {
@@ -49,6 +52,26 @@ class EnrichSplitFunctionTest {
     assertEquals(1, h.main.size());
     assertSame(e, h.main.get(0));
     assertTrue(h.dlq.isEmpty());
+  }
+
+  @Test
+  void successWithKnownSize_emitsSizeSampleBucket() {
+    ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
+        null, null, "images/k.jpg", LocalDate.now());
+    Harness h = new Harness();
+    h.run(EnrichResult.success(e, 3L * 1024 * 1024));
+    assertEquals(1, h.main.size());
+    assertEquals(List.of(ImageSizeBucket.UP_TO_5MB), h.sizeSamples);
+  }
+
+  @Test
+  void successWithUnknownSize_emitsNoSizeSample() {
+    ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
+        null, null, "images/k.jpg", LocalDate.now());
+    Harness h = new Harness();
+    h.run(EnrichResult.success(e, null));
+    assertEquals(1, h.main.size());
+    assertTrue(h.sizeSamples.isEmpty());
   }
 
   @Test

@@ -12,8 +12,10 @@ These scan the `processed_events` table and run standard SQL aggregations. Flink
 
 **Real-time analytics** (pre-aggregated by Flink):
 
+Flink computes continuously; queries read pre-computed results (no query-time latency):
+
 - 5-minute tumbling-window event count per `eventType` (stored in `event_type_counts_5m`)
-- Flink computes continuously; queries read pre-computed results (no query-time latency)
+- 5-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_5m`)
 
 **Flink windowing behavior:**
 
@@ -32,6 +34,6 @@ Access [http://localhost:3031](http://localhost:3031/d/processed-events/processe
 
 - Dashboards → Browse → **Processed Events Analytics**
 
-Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is presentation (one-off results vs. live dashboard). The "Flink pre-aggregated" panel reads from `event_type_counts_5m`, while the others query `processed_events` at query time.
+Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is presentation (one-off results vs. live dashboard).
 
 ![Grafana dashboard screenshot](docs/Grafana.jpg)

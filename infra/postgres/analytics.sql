@@ -29,3 +29,9 @@ ORDER BY 1 DESC, 2;
 SELECT window_start, window_end, event_type, event_count
 FROM event_type_counts_5m
 ORDER BY window_start DESC, event_type;
+
+-- Real-time: 5-minute stored-image count per size bucket (pre-aggregated by Flink, stored in
+-- image_size_buckets_5m)
+SELECT window_start, window_end, bucket, image_count
+FROM image_size_buckets_5m
+ORDER BY window_start DESC, bucket;

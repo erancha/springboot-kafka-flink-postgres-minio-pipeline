@@ -38,7 +38,7 @@ The upsert keys (`id`, and the `eventTime`-derived MinIO object path) are stable
 
 - Unparsable events, events with an unexpected eventType (not DATA/IMAGE), permanent image enrichment failures, and permanent JDBC write failures are all routed to the `events-dlq` Kafka topic rather than crashing the job or triggering infinite restarts.
 
-- The four routing paths (parse, image enrichment, Postgres write, 5-minute counts) are unioned into a single Kafka producer for `events-dlq`. Every `DlqRecord` carries a `stage` field (`DlqStage`: PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, COUNT_POSTGRES) identifying its origin, so a consumer can attribute a dead-letter record to its stage without a per-source sink. One sink couples dead-letter backpressure across the branches; dead-letter volume is low by nature (only failures), so this is acceptable.
+- The routing paths (parse, image enrichment, image and data Postgres writes, 5-minute per-type counts, 5-minute image-size buckets) are unioned into a single Kafka producer for `events-dlq`. Every `DlqRecord` carries a `stage` field (`DlqStage`: PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, COUNT_POSTGRES, IMAGE_SIZE_COUNT_POSTGRES) identifying its origin, so a consumer can attribute a dead-letter record to its stage without a per-source sink. One sink couples dead-letter backpressure across the branches; dead-letter volume is low by nature (only failures), so this is acceptable.
 
 ### Observability
 
@@ -89,7 +89,7 @@ The async image operator and the bounded JDBC write keep external I/O off the
 operator task thread: the task thread never blocks on a fetch, upload, or query,
 and every external call is time-bounded under the checkpoint budget, so a
 slow/bad image or a slow/hung DBMS cannot stall checkpoint barriers. (Scope: the
-event-processing path; the 5-minute windowed-count branch is covered in
+event-processing path; the 5-minute windowed branches are covered in
 [`../ANALYTICS.md`](../ANALYTICS.md).)
 
 ```mermaid

@@ -63,8 +63,9 @@ public final class PreflightChecks {
   }
 
   /**
-   * Verifies the processed_events and event_type_counts_5m tables expose every column their
-   * writers use. Throws if either table or any column is missing.
+   * Verifies every Postgres table a sink writer targets exposes the columns that writer binds, so
+   * schema drift fails the deployment at startup instead of dead-lettering every write. Throws if
+   * any table or column is missing.
    */
   static void verifyPostgresSchema(Connection conn) throws Exception {
     try (Statement st = conn.createStatement()) {
@@ -72,6 +73,8 @@ public final class PreflightChecks {
           + "FROM processed_events WHERE false");
       st.execute("SELECT window_start, window_end, event_type, event_count, updated_at "
           + "FROM event_type_counts_5m WHERE false");
+      st.execute("SELECT window_start, window_end, bucket, image_count, updated_at "
+          + "FROM image_size_buckets_5m WHERE false");
     }
   }
 

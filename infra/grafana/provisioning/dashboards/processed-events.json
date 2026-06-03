@@ -167,6 +167,80 @@
           "mode": "single"
         }
       }
+    },
+    {
+      "id": 5,
+      "type": "barchart",
+      "title": "Stored images by size bucket (Flink pre-aggregated)",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres-warehouse"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT bucket,\n       SUM(image_count)::bigint AS count\nFROM image_size_buckets_5m\nGROUP BY bucket\nORDER BY CASE bucket WHEN '<=1MB' THEN 1 WHEN '<=5MB' THEN 2 WHEN '<=10MB' THEN 3 ELSE 4 END;"
+        }
+      ],
+      "options": {
+        "xField": "bucket",
+        "yField": "count",
+        "orientation": "horizontal",
+        "showValue": "always"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Image size buckets per 5m window (Flink pre-aggregated)",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres-warehouse"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT window_start AS time,\n       image_count::bigint AS value,\n       bucket AS metric\nFROM image_size_buckets_5m\nWHERE $__timeFilter(window_start)\nORDER BY window_start;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
     }
   ]
 }

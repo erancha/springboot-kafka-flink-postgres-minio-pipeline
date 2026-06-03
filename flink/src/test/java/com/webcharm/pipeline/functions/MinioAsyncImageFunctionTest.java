@@ -444,6 +444,75 @@ class MinioAsyncImageFunctionTest {
   }
 
   /**
+   * The freshly fetched body length is the captured image size, so the size-bucket histogram
+   * reflects exactly what was uploaded on the URL path.
+   */
+  @Test
+  void freshUpload_capturesFetchedByteSize() throws Exception {
+    ErrorResponseException nsk = noSuchKey();
+    when(minioClient.statObject(any())).thenThrow(nsk);
+    doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3, 4, 5})))
+        .when(httpClient).sendAsync(any(), any());
+
+    EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
+
+    assertTrue(r.isSuccess());
+    assertEquals(5L, r.imageBytes());
+  }
+
+  /**
+   * On an idempotency hit the fetch is skipped, so the captured size comes from the existing
+   * object's stat rather than a re-download.
+   */
+  @Test
+  void idempotencyHit_capturesStoredObjectSize() throws Exception {
+    StatObjectResponse stat = mock(StatObjectResponse.class);
+    when(stat.size()).thenReturn(2048L);
+    when(minioClient.statObject(any())).thenReturn(stat);
+
+    EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
+
+    assertTrue(r.isSuccess());
+    assertEquals(2048L, r.imageBytes());
+    verify(httpClient, never()).sendAsync(any(), any());
+  }
+
+  /**
+   * A passthrough event (backend already uploaded the bytes) has no body for Flink to measure, so
+   * the size is read from the stored object's stat. Expected success carrying that stat size.
+   */
+  @Test
+  void passthrough_capturesStoredObjectSizeViaStat() throws Exception {
+    StatObjectResponse stat = mock(StatObjectResponse.class);
+    when(stat.size()).thenReturn(7L * 1024 * 1024);
+    when(minioClient.statObject(any())).thenReturn(stat);
+    ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
+        null, null, "images/2026-05-17/pre.jpg", LocalDate.now());
+
+    EnrichResult r = newFn().enrich(e).join();
+
+    assertTrue(r.isSuccess());
+    assertEquals(7L * 1024 * 1024, r.imageBytes());
+    verify(httpClient, never()).sendAsync(any(), any());
+  }
+
+  /**
+   * A stat failure on the passthrough branch is best-effort: it leaves the size unknown (null) and
+   * still yields success, so a MinIO blip drops the event from the histogram without failing it.
+   */
+  @Test
+  void passthrough_statFailure_succeedsWithUnknownSize() throws Exception {
+    when(minioClient.statObject(any())).thenThrow(new RuntimeException("minio down"));
+    ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
+        null, null, "images/2026-05-17/pre.jpg", LocalDate.now());
+
+    EnrichResult r = newFn().enrich(e).join();
+
+    assertTrue(r.isSuccess());
+    assertNull(r.imageBytes());
+  }
+
+  /**
    * The object key extension is derived from the URL path, so a .png URL produces a key ending
    * in .png (extension and content-type routing). Expected success with a .png key suffix.
    */

@@ -28,3 +28,15 @@ CREATE INDEX IF NOT EXISTS idx_event_type_counts_5m_window_start
 
 CREATE INDEX IF NOT EXISTS idx_event_type_counts_5m_event_type
   ON event_type_counts_5m (event_type);
+
+CREATE TABLE IF NOT EXISTS image_size_buckets_5m (
+  window_start TIMESTAMPTZ NOT NULL,
+  window_end TIMESTAMPTZ NOT NULL,
+  bucket TEXT NOT NULL,
+  image_count BIGINT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (window_start, bucket)
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_size_buckets_5m_window_start
+  ON image_size_buckets_5m (window_start DESC);
