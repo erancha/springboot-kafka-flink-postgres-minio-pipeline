@@ -66,7 +66,7 @@ public class StreamingJob {
   // (types, tables, operators) is a fixed marker that the value is a window output, not a literal
   // window length — the real size lives in these constants.
   private static final Duration EVENT_TYPE_COUNT_WINDOW = Duration.ofMinutes(5);
-  private static final Duration IMAGE_SIZE_WINDOW = Duration.ofMinutes(5);
+  private static final Duration IMAGE_SIZE_WINDOW = Duration.ofMinutes(10);
 
   /** Runs startup pre-flight checks, then builds the job graph and submits it to the Flink runtime. */
   public static void main(String[] args) throws Exception {
@@ -205,7 +205,7 @@ public class StreamingJob {
   }
 
   /**
-   * Keys image size samples by bucket label, applies 5-minute tumbling event-time windows, and
+   * Keys image size samples by bucket label, applies 10-minute tumbling event-time windows, and
    * emits one ImageSizeBucketCount99m per (bucket, window) pair when each window closes.
    */
   static DataStream<ImageSizeBucketCount99m> buildImageSizeBuckets(

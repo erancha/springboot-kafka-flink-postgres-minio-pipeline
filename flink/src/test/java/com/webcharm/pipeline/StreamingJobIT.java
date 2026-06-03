@@ -23,8 +23,9 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Verifies the 5-minute tumbling event-time window aggregation using a local Flink environment
- * and a bounded in-memory source with controlled timestamps — no waiting required.
+ * Verifies the tumbling event-time window aggregations (5-minute per-type counts, 10-minute
+ * image-size buckets) using a local Flink environment and a bounded in-memory source with
+ * controlled timestamps — no waiting required.
  */
 class StreamingJobIT {
 
@@ -76,7 +77,7 @@ class StreamingJobIT {
 
         // The bucket is carried in the source field purely so this bounded source can reuse the
         // proven ProcessedEvent timestamp/watermark setup; the last sample at 00:10:10 only
-        // advances the watermark to fire the [00:00, 00:05) window.
+        // advances the watermark to fire the [00:00, 00:10) window.
         DataStream<ImageSizeBucket> samples = env
             .fromData(
                 bucketEvent(ImageSizeBucket.UP_TO_1MB, base.plusSeconds(60)),   // 00:01
@@ -102,8 +103,8 @@ class StreamingJobIT {
             .filter(r -> r.getWindowStart().equals(base))
             .collect(Collectors.toMap(ImageSizeBucketCount99m::getBucket, ImageSizeBucketCount99m::getImageCount));
 
-        assertEquals(2L, window1.get("<=1MB"), "<=1MB count in [00:00, 00:05)");
-        assertEquals(1L, window1.get("<=5MB"), "<=5MB count in [00:00, 00:05)");
+        assertEquals(2L, window1.get("<=1MB"), "<=1MB count in [00:00, 00:10)");
+        assertEquals(1L, window1.get("<=5MB"), "<=5MB count in [00:00, 00:10)");
     }
 
     private static ProcessedEvent event(String type, Instant time) {

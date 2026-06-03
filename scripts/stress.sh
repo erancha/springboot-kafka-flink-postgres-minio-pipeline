@@ -124,9 +124,9 @@ canary_count() {
 # reset would silently invalidate the count verification. Runs before the
 # load, when the tables are quiescent, so it does not contend with writers.
 reset_tables() {
-  echo "⚠ resetting warehouse tables (processed_events, event_type_counts_99m)…"
+  echo "⚠ resetting warehouse tables (processed_events, event_type_counts_99m, image_size_buckets_99m)…"
   if ! "$SCRIPT_DIR/sql.sh" -q -c \
-      "TRUNCATE processed_events, event_type_counts_99m;" >/dev/null 2>&1; then
+      "TRUNCATE processed_events, event_type_counts_99m, image_size_buckets_99m;" >/dev/null 2>&1; then
     echo "✗ table reset failed — is Postgres/Docker up? Aborting." >&2
     exit 1
   fi
@@ -239,8 +239,9 @@ print_summary() {
 # Polls processed_events until its row count rises by the expected number of
 # events (successful worker requests + canaries) or VERIFY_TIMEOUT_SECS
 # elapses, then prints a MATCH/OVER/MISMATCH/SKIPPED line. The Flink
-# event_type_counts_99m table is a 5-minute tumbling window that has not fired
-# yet at this point, so it is intentionally NOT verified here (FFU).
+# event_type_counts_99m and image_size_buckets_99m tables are tumbling windows
+# that have not fired yet at this point, so they are intentionally NOT verified
+# here (FFU).
 verify_counts() {
   local canary expected cur delta="" deadline
   canary="$(canary_count)"
@@ -265,7 +266,7 @@ verify_counts() {
   else
     echo "  verify:  MISMATCH (${delta} < expected ${expected}) after ${VERIFY_TIMEOUT_SECS}s — check events-dlq"
   fi
-  echo "  note:    event_type_counts_99m not verified — 5-min tumbling window; FFU"
+  echo "  note:    event_type_counts_99m, image_size_buckets_99m not verified — tumbling windows; FFU"
   echo "─────────────────────────────────────────────"
 }
 

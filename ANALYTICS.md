@@ -15,7 +15,7 @@ These scan the `processed_events` table and run standard SQL aggregations. Flink
 Flink computes continuously; queries read pre-computed results (no query-time latency):
 
 - 5-minute tumbling-window event count per `eventType` (stored in `event_type_counts_99m`)
-- 5-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_99m`)
+- 10-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_99m`)
 
 **Flink windowing behavior:**
 

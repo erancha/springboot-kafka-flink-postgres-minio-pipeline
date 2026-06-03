@@ -206,7 +206,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Image size buckets per 5m window (Flink pre-aggregated)",
+      "title": "Image size buckets per 10m window (Flink pre-aggregated)",
       "gridPos": {
         "h": 9,
         "w": 12,
