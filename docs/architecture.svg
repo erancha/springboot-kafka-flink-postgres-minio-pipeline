@@ -77,7 +77,7 @@
   <text x="492" y="221" class="region-label" text-anchor="middle" style="font-size: 12px;">StreamingJob</text>
   <text x="281" y="246" class="step">① consume → parse JSON → assign event-time watermarks</text>
   <text x="281" y="270" class="step">② DATA → write to Postgres   <tspan class="retry">[sync JDBC · ↻ on transient]</tspan></text>
-  <text x="281" y="294" class="step">③ IMAGE → fetch + upload to MinIO → write to Postgres</text>
+  <text x="281" y="294" class="step">③ IMAGE → always to MinIO (URL: fetch + clone) → write key to Postgres</text>
   <text x="299" y="308" class="retry">[async I/O · ↻ on transient]</text>
   <text x="281" y="332" class="step">④ all events → key by type → 5-min tumbling window → write counts</text>
   <text x="281" y="362" class="step">⑤ any-stage failure → dead-letter to Kafka</text>
@@ -94,9 +94,10 @@
   <rect x="32" y="430" width="180" height="115" class="sink" rx="5"/>
   <text x="122" y="453" class="box-title" text-anchor="middle">MinIO <tspan class="mode">[S3]</tspan></text>
   <text x="122" y="475" class="resp" text-anchor="middle">store image objects</text>
-  <text x="122" y="498" class="cfg" text-anchor="middle">ports · env:MINIO_*_EXPOSED</text>
-  <text x="122" y="513" class="cfg" text-anchor="middle">bucket · env:MINIO_BUCKET</text>
-  <text x="122" y="531" class="cfg" text-anchor="middle">layout: {date}/{uuid}.ext</text>
+  <text x="122" y="490" class="resp" text-anchor="middle">(all - uploaded and URLs)</text>
+  <text x="122" y="508" class="cfg" text-anchor="middle">ports · env:MINIO_*_EXPOSED</text>
+  <text x="122" y="528" class="step" text-anchor="middle">bucket · env:MINIO_BUCKET</text>
+  <text x="122" y="540" class="step" text-anchor="middle">layout: {date}/{uuid}.ext</text>
 
   <rect x="250" y="430" width="255" height="115" class="sink" rx="5"/>
   <text x="377" y="453" class="box-title" text-anchor="middle">PostgreSQL</text>
@@ -128,8 +129,8 @@
   <path d="M 680 200 L 658 140" class="async" marker-end="url(#ah)"/>
   <text x="670" y="162" class="alabel" style="fill: #c0392b;">dead-letter</text>
   <!-- Spring → MinIO : file upload (sync), routed around left edge -->
-  <path d="M 270 138 L 270 152 L 12 152 L 12 488 L 30 488" class="sync" marker-end="url(#ah)"/>
-  <text x="30" y="148" class="alabel">file upload (sync)</text>
+  <path d="M 270 138 L 270 158 L 12 158 L 12 488 L 30 488" class="sync" marker-end="url(#ah)"/>
+  <text x="30" y="154" class="alabel">file upload (sync)</text>
   <!-- StreamingJob → MinIO : async I/O + retry -->
   <path d="M 300 390 L 165 428" class="async" marker-end="url(#ah)"/>
   <text x="188" y="403" class="alabel">image upload</text>
