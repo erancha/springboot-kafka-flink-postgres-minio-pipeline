@@ -9,8 +9,10 @@
 The backend → Flink → sinks data path treats distributed-systems failure modes as first-class
 concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF (*)
 defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
-including Testcontainers integration suites. The ingestion edge — the `POST /api/events` API and
-the React UI — is an unauthenticated local tester, not a hardened production boundary.
+including Testcontainers integration suites; the CI badge above gates the backend and Flink unit
+tests only, while the integration and frontend suites are run separately. The ingestion edge — the
+`POST /api/events` API and the React UI — is an unauthenticated local tester, not a hardened
+production boundary.
 
 (*) SSRF (Server-Side Request Forgery): blocking attacker-supplied image URLs from reaching
 internal hosts — e.g. an `IMAGE` event with `http://169.254.169.254/` to probe cloud metadata.
