@@ -6,8 +6,8 @@
 
 ## Summary
 
-A production-leaning streaming pipeline that reflects a clear understanding of distributed-systems
-failure modes: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF
+A production-leaning streaming pipeline that treats distributed-systems failure modes as first-class
+concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF
 defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
 including Testcontainers integration suites.
 
