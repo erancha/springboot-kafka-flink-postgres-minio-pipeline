@@ -1,0 +1,16 @@
+root = true
+
+# Indentation only. The line-ending standard is LF (everything is built and run from WSL); it is
+# enforced repo-wide by .gitattributes. end_of_line is intentionally omitted here until the one-time
+# CRLF->LF normalization commit lands, because converting files on save before then would turn
+# unrelated saves into whole-file diffs.
+[*]
+charset = utf-8
+indent_style = space
+
+[*.java]
+indent_size = 2
+max_line_length = 100
+
+[*.{xml,json,jsx,tsx,ts,js,css,scss,html,yml,yaml}]
+indent_size = 2

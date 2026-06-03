@@ -1,0 +1,17 @@
+{
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "[java]": {
+    "editor.defaultFormatter": "redhat.java"
+  },
+  "java.format.settings.url": ".vscode/eclipse-java-formatter.xml",
+  "java.format.settings.profile": "webcharm",
+  "java.compile.nullAnalysis.mode": "disabled",
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "cSpell.words": [
+    "checkpointed",
+    "ckpt",
+    "Flink",
+    "webcharm"
+  ]
+}

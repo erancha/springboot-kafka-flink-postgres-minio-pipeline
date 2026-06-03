@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<profiles version="21">
+  <profile kind="CodeFormatterProfile" name="webcharm" version="21">
+    <!-- Match the committed codebase: 2-space indentation, no tabs. continuation_indentation is
+         measured in indentation units, so 2 units of a 2-space indent yields the 4-space wrap that
+         the fluent builder chains already use. -->
+    <setting id="org.eclipse.jdt.core.formatter.tabulation.char" value="space"/>
+    <setting id="org.eclipse.jdt.core.formatter.tabulation.size" value="2"/>
+    <setting id="org.eclipse.jdt.core.formatter.indentation.size" value="2"/>
+    <setting id="org.eclipse.jdt.core.formatter.continuation_indentation" value="2"/>
+
+    <!-- Line breaks are placed by hand in this codebase (the editor ruler at 100 is a visual guide,
+         not an enforced wrap). A very large split width disables the formatter's own line wrapping,
+         so saving an already-written file never re-wraps statements that were laid out deliberately
+         — the formatter only normalizes indentation, spacing, and braces. -->
+    <setting id="org.eclipse.jdt.core.formatter.lineSplit" value="9999"/>
+    <setting id="org.eclipse.jdt.core.formatter.comment.line_length" value="9999"/>
+    <!-- Keep the developer's existing line breaks: never pull a hand-wrapped fluent chain back onto
+         one line. With the large split width above, the net effect is that the formatter neither
+         adds nor removes line breaks — it only re-indents and normalizes spacing. -->
+    <setting id="org.eclipse.jdt.core.formatter.join_wrapped_lines" value="false"/>
+    <setting id="org.eclipse.jdt.core.formatter.join_lines_in_comments" value="false"/>
+
+    <!-- Comments are authored and wrapped by hand. Reflowing them fragments deliberately laid-out
+         text (trailing // comments collapse one word per line; single-line Javadoc gets exploded
+         into multiple lines), so the formatter leaves every comment kind untouched. -->
+    <setting id="org.eclipse.jdt.core.formatter.comment.format_line_comments" value="false"/>
+    <setting id="org.eclipse.jdt.core.formatter.comment.format_block_comments" value="false"/>
+    <setting id="org.eclipse.jdt.core.formatter.comment.format_javadoc_comments" value="false"/>
+    <setting id="org.eclipse.jdt.core.formatter.use_on_off_tags" value="true"/>
+
+    <!-- Empty bodies stay on one line (private EnvConfig() {}), matching how they are written. -->
+    <setting id="org.eclipse.jdt.core.formatter.keep_method_body_on_one_line" value="one_line_if_empty"/>
+    <!-- Guard clauses such as `if (path.endsWith(".png")) return ".png";` stay on one line. -->
+    <setting id="org.eclipse.jdt.core.formatter.keep_guardian_clause_on_one_line" value="true"/>
+  </profile>
+</profiles>

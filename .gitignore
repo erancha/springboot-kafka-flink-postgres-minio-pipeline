@@ -1,7 +1,10 @@
 **/target/
 .claude/worktrees/
 .claude/settings.local.json
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/eclipse-java-formatter.xml
 docs/superpowers/
 docs/*-code-eval-*.md
 node_modules/
