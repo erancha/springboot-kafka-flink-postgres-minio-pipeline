@@ -49,7 +49,6 @@ public class EventProducer {
       throw new IllegalArgumentException("Failed to serialize event to JSON", e);
     }
 
-    log.debug("Publishing event id={} to topic={}", key, topic);
     try {
       var result = kafkaTemplate.send(topic, key, value).get(sendTimeoutSeconds, TimeUnit.SECONDS);
       log.debug("Published event id={} to topic={} partition={} offset={}",

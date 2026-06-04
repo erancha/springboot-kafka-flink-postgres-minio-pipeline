@@ -8,6 +8,7 @@ import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * IMAGE_URL_ALLOWED_HOSTS is set to "cdn.example.com" so imageUrl tests can verify allowed vs blocked hosts.
  */
 @WebMvcTest(EventController.class)
+@Import(PayloadSchemaValidator.class)
 @TestPropertySource(properties = "IMAGE_URL_ALLOWED_HOSTS=cdn.example.com")
 class EventControllerTest {
 
@@ -58,6 +60,36 @@ class EventControllerTest {
             .andExpect(status().isOk());
 
         verify(eventProducer).send(argThat(e -> "DATA".equals(e.get("eventType"))));
+    }
+
+    @Test
+    void publishEvent_dataEventWithoutPayload_returns400AndDoesNotPublish() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"DATA\"}"))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
+    }
+
+    @Test
+    void publishEvent_dataEventWithEmptyPayload_returns400AndDoesNotPublish() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"DATA\",\"payload\":{}}"))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
+    }
+
+    @Test
+    void publishEvent_textEventWithoutPayload_returns400AndDoesNotPublish() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"TEXT\"}"))
+            .andExpect(status().isBadRequest());
+
+        verify(eventProducer, never()).send(any());
     }
 
     @Test
@@ -209,7 +241,7 @@ class EventControllerTest {
 
         mvc.perform(post("/api/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"eventType\":\"DATA\"}"))
+                .content("{\"eventType\":\"DATA\",\"payload\":{\"key\":\"value\"}}"))
             .andExpect(status().isServiceUnavailable());
     }
 

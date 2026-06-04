@@ -4,14 +4,39 @@ type EventType = 'DATA' | 'IMAGE';
 
 export default function App() {
   const [eventType, setEventType] = useState<EventType>('DATA');
-  const [jsonText, setJsonText] = useState<string>(JSON.stringify({ foo: 'bar', count: 1 }, null, 2));
+  // Replaced on mount by the schema's example; '{}' avoids hardcoding payload keys here.
+  const [jsonText, setJsonText] = useState<string>('{}');
   const [imageUrl, setImageUrl] = useState<string>('https://www.gstatic.com/webp/gallery/1.jpg');
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
   const [uploadNotification, setUploadNotification] = useState<{ type: 'uploading' | 'success' | 'error'; message: string } | null>(null);
   const [sendCount, setSendCount] = useState<number>(1);
   const [delaySeconds, setDelaySeconds] = useState<number>(0);
+  const [allowedKeys, setAllowedKeys] = useState<string[]>([]);
+
+  // /event-payload-schema.json is the backend schema staged into the image at build time.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch('/event-payload-schema.json');
+        if (!resp.ok) return;
+        const schema: any = await resp.json();
+        if (cancelled) return;
+        const keys = Object.keys(schema?.properties ?? {});
+        if (keys.length) setAllowedKeys(keys);
+        const sample = Array.isArray(schema?.sample) ? schema.sample[0] : undefined;
+        if (sample) setJsonText(JSON.stringify(sample, null, 2));
+      } catch {
+        // Keep the built-in fallback default when the schema asset is unavailable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (eventType === 'IMAGE') {
@@ -32,6 +57,7 @@ export default function App() {
   async function submit() {
     setBusy(true);
     setResult('');
+    setErrorMessage(null);
     setUploadNotification(null);
     try {
       if (eventType === 'IMAGE' && file) {
@@ -47,7 +73,7 @@ export default function App() {
         const body = await resp.text();
         if (!resp.ok) {
           setUploadNotification({ type: 'error', message: `Upload failed: ${body}` });
-          throw new Error(body);
+          return;
         }
         setUploadNotification({ type: 'success', message: `Uploaded successfully` });
         setResult(body);
@@ -93,7 +119,7 @@ export default function App() {
         }
       }
     } catch (e: any) {
-      setResult(String(e?.message ?? e));
+      setErrorMessage(String(e?.message ?? e));
     } finally {
       setBusy(false);
     }
@@ -153,6 +179,11 @@ export default function App() {
       {eventType === 'DATA' && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>JSON payload</div>
+          {allowedKeys.length > 0 && (
+            <div style={{ color: '#555', fontSize: 12, marginBottom: 8 }}>
+              Allowed keys: {allowedKeys.join(', ')}
+            </div>
+          )}
           <textarea
             value={jsonText}
             onChange={(e) => setJsonText(e.target.value)}
@@ -198,6 +229,22 @@ export default function App() {
               {uploadNotification.message}
             </div>
           )}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div
+          role='alert'
+          style={{
+            marginTop: 16,
+            padding: '8px 12px',
+            borderRadius: 4,
+            fontWeight: 500,
+            background: '#fdecea',
+            color: '#c62828',
+            border: '1px solid #ef9a9a',
+          }}>
+          ⚠ {errorMessage}
         </div>
       )}
 

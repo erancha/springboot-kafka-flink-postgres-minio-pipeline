@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Contract for DATA event payloads: an order record. Replace EVENT_PAYLOAD_SCHEMA to enforce a different payload shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "orderNumber",
+    "quantity"
+  ],
+  "properties": {
+    "orderNumber": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "quantity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "sku": {
+      "type": "string",
+      "maxLength": 64
+    }
+  },
+  "sample": [
+    {
+      "orderNumber": "ORD-1001",
+      "quantity": 3,
+      "sku": "SKU-42"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+node_modules
+dist
+# Generated from the backend schema by scripts/sync-schema.mjs / scripts/build.sh
+public/event-payload-schema.json

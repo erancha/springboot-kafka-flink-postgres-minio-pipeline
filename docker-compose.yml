@@ -138,6 +138,9 @@ services:
       - MINIO_BUCKET=${MINIO_BUCKET}
       # SSRF allowlist for URL-based IMAGE events; an empty value denies every imageUrl fetch with 403.
       - IMAGE_URL_ALLOWED_HOSTS=${IMAGE_URL_ALLOWED_HOSTS}
+      - MAX_REQUEST_CONTENT_LENGTH=${MAX_REQUEST_CONTENT_LENGTH}
+      - EVENT_PAYLOAD_SCHEMA=${EVENT_PAYLOAD_SCHEMA}
+      - LOG_LEVEL=${LOG_LEVEL}
     ports:
       - "${BACKEND_PORT}:8080"
     depends_on:

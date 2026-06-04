@@ -49,6 +49,43 @@ describe('delay between requests', () => {
   });
 });
 
+describe('DATA payload schema (loaded from /event-payload-schema.json)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Assert against the mocked schema's keys, not the real ones, so the test survives schema changes.
+  function stubSchemaFetch() {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (typeof url === 'string' && url.includes('event-payload-schema.json')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            properties: { alpha: { type: 'string' }, beta: { type: 'integer' } },
+            sample: [{ alpha: 'x', beta: 7 }],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, text: () => Promise.resolve('ok') });
+    }));
+  }
+
+  it('lists the allowed payload keys from the schema', async () => {
+    stubSchemaFetch();
+    render(<App />);
+    const hint = await screen.findByText(/allowed keys:/i);
+    expect(hint).toHaveTextContent('alpha');
+    expect(hint).toHaveTextContent('beta');
+  });
+
+  it("seeds the input with the schema's example payload", async () => {
+    stubSchemaFetch();
+    render(<App />);
+    const textarea = await screen.findByDisplayValue(/alpha/);
+    expect(textarea).toHaveDisplayValue(/"beta": 7/);
+  });
+});
+
 describe('submit() error handling', () => {
   afterEach(() => {
     vi.restoreAllMocks();

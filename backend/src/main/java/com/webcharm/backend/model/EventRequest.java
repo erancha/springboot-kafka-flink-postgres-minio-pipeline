@@ -1,5 +1,6 @@
 package com.webcharm.backend.model;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.HashMap;
@@ -36,6 +37,18 @@ public class EventRequest {
 
   public void setImageUrl(String imageUrl) {
     this.imageUrl = imageUrl;
+  }
+
+  /**
+   * Requires a non-empty payload for DATA and its TEXT alias. IMAGE is exempt: it has no payload —
+   * its content is an imageUrl or an uploaded object. A null eventType is left to {@code @NotNull}.
+   */
+  @AssertTrue(message = "DATA events require a non-empty payload")
+  public boolean isPayloadPresentWhenRequired() {
+    if (eventType == null || eventType == EventType.IMAGE) {
+      return true;
+    }
+    return payload != null && !payload.isEmpty();
   }
 
   public Map<String, Object> toEventMap(@NotNull UUID id, @NotNull Instant eventTime, @NotNull String source) {

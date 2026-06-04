@@ -5,6 +5,7 @@ import com.webcharm.backend.storage.ImageUploadService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -17,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Kept separate from EventControllerTest because the allowlist property is class-scoped in @WebMvcTest.
  */
 @WebMvcTest(EventController.class)
+@Import(PayloadSchemaValidator.class)
 class EventControllerEmptyAllowlistTest {
 
     @Autowired MockMvc mvc;

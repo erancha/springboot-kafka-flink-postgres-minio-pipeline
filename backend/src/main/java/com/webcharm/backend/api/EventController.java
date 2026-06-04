@@ -39,10 +39,13 @@ public class EventController {
 
   private final EventProducer eventProducer;
   private final ImageUploadService imageUploadService;
+  private final PayloadSchemaValidator payloadSchemaValidator;
 
-  public EventController(EventProducer eventProducer, ImageUploadService imageUploadService) {
+  public EventController(EventProducer eventProducer, ImageUploadService imageUploadService,
+      PayloadSchemaValidator payloadSchemaValidator) {
     this.eventProducer = eventProducer;
     this.imageUploadService = imageUploadService;
+    this.payloadSchemaValidator = payloadSchemaValidator;
   }
 
   @PostConstruct
@@ -57,6 +60,8 @@ public class EventController {
   public EventResponse publishEvent(@Valid @RequestBody EventRequest request) {
     if (EventType.IMAGE == request.getEventType()) {
       validateImageUrl(request.getImageUrl());
+    } else {
+      payloadSchemaValidator.validate(request.getPayload());
     }
     UUID id = UUID.randomUUID();
     Instant now = Instant.now();

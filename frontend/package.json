@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "sync-schema": "node scripts/sync-schema.mjs",
+    "predev": "node scripts/sync-schema.mjs",
+    "prebuild": "node scripts/sync-schema.mjs",
+    "pretest": "node scripts/sync-schema.mjs",
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
