@@ -120,13 +120,12 @@ public class StreamingJob {
 
     DataStream<ProcessedEvent> timedEvents = parsedEvents
         .assignTimestampsAndWatermarks(
+            // The watermark only advances when a later event arrives, so the downstream tumbling
+            // windows close only while events keep flowing; after the stream goes fully silent the
+            // watermark freezes and the trailing window never fires until ingestion resumes.
             WatermarkStrategy
                 .<ProcessedEvent>forBoundedOutOfOrderness(Duration.ofSeconds(10))
-                .withTimestampAssigner((event, timestamp) -> event.getEventTime().toEpochMilli())
-                // Without idleness, a partition that goes silent after a burst holds the global
-                // watermark frozen — windows never fire. Marking idle partitions excluded lets
-                // the watermark advance on active partitions (or to Long.MAX_VALUE when all idle).
-                .withIdleness(Duration.ofMinutes(1)))
+                .withTimestampAssigner((event, timestamp) -> event.getEventTime().toEpochMilli()))
         .name("event-time-watermarks");
 
     // Fan out by eventType to the sinks and aggregations; every branch turns its failures into a
