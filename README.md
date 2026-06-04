@@ -10,12 +10,20 @@ The backend → Kafka → Flink → sinks data path treats distributed-systems f
 concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF (*)
 defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
 including Testcontainers integration suites; the CI badge above gates the backend and Flink unit
-tests only, while the integration and frontend suites are run separately. The ingestion edge — the
-`POST /api/events` API and the React UI — is an unauthenticated local tester, not a hardened
-production boundary.
+tests only, while the integration and frontend suites are run separately.
 
 (*) SSRF (Server-Side Request Forgery): blocking attacker-supplied image URLs from reaching
 internal hosts — e.g. an `IMAGE` event with `http://169.254.169.254/` to probe cloud metadata.
+
+### Out of scope
+
+This is an exercise focused on the data path's failure handling, not a production deployment. The following are deliberately not built:
+
+- **Authentication / authorization** — the ingestion edge (`POST /api/events` and the React UI) is an unauthenticated local tester, not a hardened production boundary: no login, API key, tenant isolation, or rate limiting, with the SSRF allowlist as the only request-level guard.
+- **Secrets management & transport security** — credentials are supplied via a gitignored `.env` (only `.env.example`, with blank values, is committed), but there is no Vault / Secrets Manager integration or rotation, and inter-service traffic on the local Docker network is plaintext (no TLS).
+- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](flink/PIPELINE_FLOW.md#dlq-operations).
+- **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](flink/PIPELINE_FLOW.md#out-of-scope).
+- **Paging / alerting** — Grafana dashboards are for inspection only; no Alertmanager is wired to any signal.
 
 ## Overview
 

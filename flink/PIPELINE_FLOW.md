@@ -40,6 +40,8 @@ The upsert keys (`id`, and the `eventTime`-derived MinIO object path) are stable
 
 - The routing paths (parse, image enrichment, image and data Postgres writes, 5-minute per-type counts, 10-minute image-size buckets) are unioned into a single Kafka producer for `events-dlq`. Every `DlqRecord` carries a `stage` field (`DlqStage`: PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, EVENT_TYPE_COUNT_POSTGRES, IMAGE_SIZE_BUCKET_COUNT_POSTGRES) identifying its origin, so a consumer can attribute a dead-letter record to its stage without a per-source sink. One sink couples dead-letter backpressure across the branches; dead-letter volume is low by nature (only failures), so this is acceptable.
 
+- This covers **capture**, not operations: records land in `events-dlq` at-least-once and are metered per stage, but consuming, replaying, and alerting on the topic are out of scope — see [DLQ operations](#dlq-operations).
+
 ### Observability
 
 Pipeline health is exported as Prometheus metrics, not just logs. The Flink Prometheus reporter (the `metrics-prometheus` plugin bundled in the `apache/flink:2.2` image) runs on the JobManager and TaskManager at port 9249; a Prometheus container scrapes both, and Grafana renders the pre-provisioned [**Pipeline Health** dashboard](http://localhost:3031/d/pipeline-health) through a Prometheus datasource, provisioned from [`infra/grafana/provisioning/dashboards/pipeline-health.json`](../infra/grafana/provisioning/dashboards/pipeline-health.json). It is a Flink-reporter-backed dashboard; the only Kafka signal is the Flink source's consumer lag, not broker-level metrics. The dashboard is split into two rows: **Health** (paging-grade signals — is the pipeline OK at 3am) and **Throughput & performance** (workload shape and latency, deliberately not paging signals).
@@ -134,7 +136,17 @@ sequenceDiagram
     end
 ```
 
-## Out of scope (single-node deployment)
+## Out of scope
+
+### DLQ operations
+
+The DLQ is **write-only here**. The capture path is complete (at-least-once sink, per-stage `dlq_records` counter, dashboard panel), but the operational side is deliberately not built:
+
+- No consumer reads `events-dlq`; inspecting or draining it is a manual Kafka-UI operation.
+- No replay tooling re-injects dead-lettered records once a payload or downstream fix lands.
+- No alert fires on a non-zero `dlq_records` rate — the dashboard is for inspection, not paging (consistent with the no-Alertmanager boundary noted under [Observability](#observability)).
+
+### Single-node deployment
 
 - Kafka: single broker, replication factor 1 — broker loss means data loss.
 - Flink: single JobManager (no HA), single TaskManager — no automatic failover at the cluster level.
