@@ -8,21 +8,19 @@ A real-time data pipeline exercise demonstrating end-to-end event streaming. Use
 
 ## Common Commands
 
-All stack operations go through scripts in `scripts/`:
+All stack operations go through scripts in `scripts/`. Scripts that take options print
+their own usage via `-h`/`--help` — consult that rather than relying on flags listed here.
 
-```bash
-./scripts/start.sh           # Start full Docker Compose stack; --restart stops first, --rebuild rebuilds images
-./scripts/stop.sh            # Stop (keeps volumes); --remove-volumes removes volumes; --prune-dangling-images also purges build artifacts
-./scripts/build.sh           # Build all Docker images
-./scripts/ps.sh              # Show running containers and service URLs
-./scripts/health.sh          # Check container health
-./scripts/logs.sh [service]  # Stream logs; -e/--errors filters to errors only
-./scripts/sql.sh             # Interactive psql session
-./scripts/sql-file.sh <path> # Execute SQL file against Postgres
-./scripts/minio-ls.sh [prefix] # List MinIO bucket objects
-./scripts/minio-cat.sh <key>   # Print MinIO object contents
-./scripts/test.sh [suite...]   # Run tests: backend flink flink-it frontend (default: all)
-```
+- `start.sh` — start the stack, or rebuild/recreate only named services
+- `stop.sh` — stop the stack
+- `build.sh` — build all Docker images
+- `ps.sh` — list running containers and service URLs
+- `health.sh` — check container health
+- `logs.sh` — stream container logs
+- `sql.sh` / `sql-file.sh` — interactive psql / run a SQL file against Postgres
+- `minio-ls.sh` / `minio-cat.sh` — list / print MinIO bucket objects
+- `test.sh` — run the test suites
+- `stress.sh` — generate concurrent load against the running backend
 
 ## Architecture & Data Flow
 
@@ -56,8 +54,7 @@ The Flink job is submitted by the `flink-job` Docker service at startup and runs
 
 - **Kafka topic `events`**: single topic, event id used as partition key (ordering per-event, parallelism across events)
 - **Backend validation split**: HTTP-level validation (Bean Validation on `EventRequest`) is separate from business validation in `EventController`
-- **Flink routing**: `StreamingJob.java` fans out based on `eventType`: IMAGE events go through `MinioUploadFunction` (ProcessFunction) — keyed events pass through, URL events are fetched and uploaded to MinIO; DATA events go directly to `PostgresProcessedEventSink`
-- **Image size histogram**: image byte size is determined in one place — `MinioAsyncImageFunction` (fetched body length on the URL path, `statObject` size on the backend-upload passthrough) — and carried on `EnrichResult` to a side output that `buildImageSizeBuckets` windows into `image_size_buckets_agg`, reusing the per-type count sink path.
+- **Flink topology**: the fan-out by `eventType`, async MinIO enrichment, tumbling-window aggregations, and single dead-letter path are defined and documented in `flink/src/main/java/com/webcharm/pipeline/StreamingJob.java` (class Javadoc + inline comments)
 - **Nginx** (`frontend/nginx.conf`): proxies `/api/` to `backend:8030` in production; Vite dev server (`vite.config.ts`) proxies to `localhost:8030` during local development
 - **No ZooKeeper**: Kafka runs in KRaft mode
 
