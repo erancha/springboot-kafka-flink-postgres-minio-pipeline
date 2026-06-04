@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,8 +21,11 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
   private final long maxBytes;
 
-  public RequestSizeLimitFilter(@Value("${MAX_REQUEST_CONTENT_LENGTH:0}") long maxBytes) {
-    this.maxBytes = maxBytes;
+  // Boxed Long, not long, so the documented "empty disables" value binds to null (Spring maps an
+  // empty property to null) rather than failing startup. Null and the absent-property default both
+  // mean 0, which shouldNotFilter treats as "no limit".
+  public RequestSizeLimitFilter(@Value("${MAX_REQUEST_CONTENT_LENGTH:0}") Long maxBytes) {
+    this.maxBytes = Objects.requireNonNullElse(maxBytes, 0L);
   }
 
   @Override
