@@ -57,7 +57,7 @@ The Flink job is submitted by the `flink-job` Docker service at startup and runs
 - **Kafka topic `events`**: single topic, event id used as partition key (ordering per-event, parallelism across events)
 - **Backend validation split**: HTTP-level validation (Bean Validation on `EventRequest`) is separate from business validation in `EventController`
 - **Flink routing**: `StreamingJob.java` fans out based on `eventType`: IMAGE events go through `MinioUploadFunction` (ProcessFunction) — keyed events pass through, URL events are fetched and uploaded to MinIO; DATA events go directly to `PostgresProcessedEventSink`
-- **Image size histogram**: image byte size is determined in one place — `MinioAsyncImageFunction` (fetched body length on the URL path, `statObject` size on the backend-upload passthrough) — and carried on `EnrichResult` to a side output that `buildImageSizeBuckets` windows into `image_size_buckets_99m`, reusing the per-type count sink path.
+- **Image size histogram**: image byte size is determined in one place — `MinioAsyncImageFunction` (fetched body length on the URL path, `statObject` size on the backend-upload passthrough) — and carried on `EnrichResult` to a side output that `buildImageSizeBuckets` windows into `image_size_buckets_agg`, reusing the per-type count sink path.
 - **Nginx** (`frontend/nginx.conf`): proxies `/api/` to `backend:8030` in production; Vite dev server (`vite.config.ts`) proxies to `localhost:8030` during local development
 - **No ZooKeeper**: Kafka runs in KRaft mode
 

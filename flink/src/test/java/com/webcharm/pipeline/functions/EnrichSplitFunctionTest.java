@@ -24,7 +24,7 @@ class EnrichSplitFunctionTest {
   private static final class Harness extends EnrichSplitFunction {
     final List<ProcessedEvent> main = new ArrayList<>();
     final List<DlqRecord> dlq = new ArrayList<>();
-    final List<ImageSizeBucket> sizeSamples = new ArrayList<>();
+    final List<ImageSizeBucket> sizeBuckets = new ArrayList<>();
 
     void run(EnrichResult r) {
       Context ctx = new Context() {
@@ -32,7 +32,7 @@ class EnrichSplitFunctionTest {
         @Override public TimerService timerService() { return null; }
         @Override public <X> void output(OutputTag<X> tag, X val) {
           if (val instanceof DlqRecord d) dlq.add(d);
-          if (val instanceof ImageSizeBucket b) sizeSamples.add(b);
+          if (val instanceof ImageSizeBucket b) sizeBuckets.add(b);
         }
       };
       Collector<ProcessedEvent> col = new Collector<>() {
@@ -61,7 +61,7 @@ class EnrichSplitFunctionTest {
     Harness h = new Harness();
     h.run(EnrichResult.success(e, 3L * 1024 * 1024));
     assertEquals(1, h.main.size());
-    assertEquals(List.of(ImageSizeBucket.UP_TO_5MB), h.sizeSamples);
+    assertEquals(List.of(ImageSizeBucket.UP_TO_5MB), h.sizeBuckets);
   }
 
   @Test
@@ -71,7 +71,7 @@ class EnrichSplitFunctionTest {
     Harness h = new Harness();
     h.run(EnrichResult.success(e, null));
     assertEquals(1, h.main.size());
-    assertTrue(h.sizeSamples.isEmpty());
+    assertTrue(h.sizeBuckets.isEmpty());
   }
 
   @Test

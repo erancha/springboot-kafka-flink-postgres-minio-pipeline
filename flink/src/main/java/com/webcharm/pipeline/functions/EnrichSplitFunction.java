@@ -10,9 +10,9 @@ import org.apache.flink.util.OutputTag;
 
 /**
  * Splits an EnrichResult stream: a success goes to the main output, any failure to the DLQ side
- * output, and each success of known size additionally emits its size bucket to the size-sample
- * side output that feeds the windowed size histogram. Performs no I/O, so it is safe on the
- * operator task thread.
+ * output, and each success of known size additionally emits its size bucket to the
+ * image-size-bucket side output that feeds the windowed size histogram. Performs no I/O, so it is
+ * safe on the operator task thread.
  */
 public class EnrichSplitFunction extends ProcessFunction<EnrichResult, ProcessedEvent> {
 
@@ -21,8 +21,8 @@ public class EnrichSplitFunction extends ProcessFunction<EnrichResult, Processed
       new OutputTag<DlqRecord>("minio-upload-error") {};
 
   /** Side-output tag carrying one size bucket per successfully stored image of known size. */
-  public static final OutputTag<ImageSizeBucket> SIZE_SAMPLE_TAG =
-      new OutputTag<ImageSizeBucket>("image-size-sample") {};
+  public static final OutputTag<ImageSizeBucket> IMAGE_SIZE_BUCKET_TAG =
+      new OutputTag<ImageSizeBucket>("image-size-bucket") {};
 
   @Override
   public void processElement(EnrichResult value, Context ctx, Collector<ProcessedEvent> out) {
@@ -30,7 +30,7 @@ public class EnrichSplitFunction extends ProcessFunction<EnrichResult, Processed
       out.collect(value.success());
       Long bytes = value.imageBytes();
       if (bytes != null) {
-        ctx.output(SIZE_SAMPLE_TAG, ImageSizeBucket.of(bytes));
+        ctx.output(IMAGE_SIZE_BUCKET_TAG, ImageSizeBucket.of(bytes));
       }
     } else {
       ctx.output(UPLOAD_ERROR_TAG, value.failure());

@@ -14,12 +14,12 @@ These scan the `processed_events` table and run standard SQL aggregations. Flink
 
 Flink computes continuously; queries read pre-computed results (no query-time latency):
 
-- 5-minute tumbling-window event count per `eventType` (stored in `event_type_counts_99m`)
-- 10-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_99m`)
+- 5-minute tumbling-window event count per `eventType` (stored in `event_type_counts_agg`)
+- 10-minute tumbling-window count of stored images per size bucket (stored in `image_size_buckets_agg`)
 
-**Flink windowing behavior:**
+**Flink windowing behavior, by example:**
 
-The 5-minute tumbling-window aggregation ([`StreamingJob.buildWindowedCounts`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)) uses Flink's default behavior: it only emits window results for windows that contain at least one event. Empty windows are not materialized. This means the `event_type_counts_99m` table will only have rows for time periods when events actually arrived. If there are no `DATA` events in a 5-minute window, that window will not appear in the results, even if the same period had `IMAGE` events. This is standard Flink behavior and conserves storage; to include all windows (including empty ones), the job would need explicit late-firing or allowed lateness policies.
+Take the per-type count ([`StreamingJob.buildEventTypeCounts`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)): it groups events by `eventType` within each 5-minute window and counts them, producing one row per `(eventType, window_start)`. Flink writes a row only for a type that received at least one event in that window — there are no zero rows. So a window holds a row for every type that saw traffic and none for a type that saw none: the same window can have a `DATA` row and no `IMAGE` row, or the reverse. Emitting zero-count rows would require explicit late-firing or allowed-lateness policies.
 
 ## Running the queries
 

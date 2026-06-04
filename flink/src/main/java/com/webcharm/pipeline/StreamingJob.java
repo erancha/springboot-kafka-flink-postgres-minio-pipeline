@@ -8,16 +8,16 @@ import com.webcharm.pipeline.functions.DlqMeterFunction;
 import com.webcharm.pipeline.functions.EnrichSplitFunction;
 import com.webcharm.pipeline.functions.MinioAsyncImageFunction;
 import com.webcharm.pipeline.functions.ParseEventFunction;
-import com.webcharm.pipeline.functions.PostgresCount99mWriteFunction;
-import com.webcharm.pipeline.functions.PostgresImageSizeBucketCount99mWriteFunction;
+import com.webcharm.pipeline.functions.PostgresCountAggWriteFunction;
+import com.webcharm.pipeline.functions.PostgresImageSizeBucketCountAggWriteFunction;
 import com.webcharm.pipeline.functions.PostgresWriteFunction;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.EventType;
-import com.webcharm.pipeline.types.EventTypeCount99m;
+import com.webcharm.pipeline.types.EventTypeCountAgg;
 import com.webcharm.pipeline.types.ImageSizeBucket;
-import com.webcharm.pipeline.types.ImageSizeBucketCount99m;
+import com.webcharm.pipeline.types.ImageSizeBucketCountAgg;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,19 +54,16 @@ import java.util.function.Predicate;
 import java.util.stream.StreamSupport;
 
 /**
- * Defines and runs the pipeline: parse Kafka events, route IMAGE through async MinIO
- * enrichment and DATA straight to Postgres, pre-aggregate 5-minute per-type counts, and
- * send every failure to the dead-letter Kafka topic.
+ * Defines and submits the streaming topology. Parses Kafka events, stamps event-time
+ * watermarks, then fans out by eventType: IMAGE through async MinIO enrichment, DATA
+ * straight to Postgres. Tumbling-window aggregations feed Postgres alongside the raw
+ * writes, and every failure from any branch converges on a single dead-letter Kafka topic.
  */
 public class StreamingJob {
   private static final Logger log = LoggerFactory.getLogger(StreamingJob.class);
 
-  // Tumbling-window sizes for the two pre-aggregations, kept as independent knobs so one can be
-  // tuned without disturbing the other. The "99m" token in the windowed-aggregate identifiers
-  // (types, tables, operators) is a fixed marker that the value is a window output, not a literal
-  // window length — the real size lives in these constants.
   private static final Duration EVENT_TYPE_COUNT_WINDOW = Duration.ofMinutes(5);
-  private static final Duration IMAGE_SIZE_WINDOW = Duration.ofMinutes(10);
+  private static final Duration IMAGE_SIZE_BUCKET_COUNT_WINDOW = Duration.ofMinutes(10);
 
   /** Runs startup pre-flight checks, then builds the job graph and submits it to the Flink runtime. */
   public static void main(String[] args) throws Exception {
@@ -80,9 +77,8 @@ public class StreamingJob {
     StreamExecutionEnvironment executionEnv = StreamExecutionEnvironment.getExecutionEnvironment();
     executionEnv.enableCheckpointing(10_000);
 
-    // Retry indefinitely with exponential back-off (5 s → 10 min); let Flink HA
-    // manage job-level failover rather than giving up after N attempts.
-    // RestartStrategies / Time were removed in Flink 2.x; configure via Configuration instead.
+    // Retry indefinitely with exponential back-off; let Flink HA keep restarting the job rather
+    // than capping attempts and letting it die.
     Configuration restartCfg = new Configuration();
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY, "exponential-delay");
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_INITIAL_BACKOFF, Duration.ofSeconds(5));
@@ -93,11 +89,13 @@ public class StreamingJob {
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
     executionEnv.configure(restartCfg);
 
+    // Conservative checkpoint tuning for a low-volume local pipeline; these are sane starting
+    // points, not workload-derived. The checkpoint interval (10 s) is set above.
     CheckpointConfig ckptConfig = executionEnv.getCheckpointConfig();
-    ckptConfig.setMinPauseBetweenCheckpoints(5_000); // at least 5 s idle between checkpoints to reduce back-pressure
-    ckptConfig.setCheckpointTimeout(60_000); // abort a checkpoint that does not complete within 60 s
-    ckptConfig.setMaxConcurrentCheckpoints(1); // disallow overlapping checkpoints; one in-flight at a time
-    ckptConfig.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION); // keep last checkpoint on cancellation for recovery
+    ckptConfig.setMinPauseBetweenCheckpoints(5_000);
+    ckptConfig.setCheckpointTimeout(60_000);
+    ckptConfig.setMaxConcurrentCheckpoints(1);
+    ckptConfig.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
 
     KafkaSource<String> source = KafkaSource.<String>builder()
         .setBootstrapServers(kafkaBootstrap)
@@ -110,19 +108,16 @@ public class StreamingJob {
         .setProperty("enable.auto.commit", "false")
         .build();
 
-    // =========== happy path ===========
-    // noWatermarks() intentional: the real strategy is assigned below after parsing, where event timestamps are available.
+    // No watermarks at the source: records here are still raw JSON strings, so the event-time
+    // field buried in the payload can't be read yet. The event-time strategy is assigned one step
+    // below, on the parsed ProcessedEvent stream where getEventTime() is available.
     DataStream<String> rawEvents = executionEnv.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-events");
 
     SingleOutputStreamOperator<ProcessedEvent> parsedEvents = rawEvents
         .process(new ParseEventFunction())
         .name("parse-json");
-    // ===================================
-
-    // =========== unhappy path: unparseable messages (bad JSON, missing fields) ===========
     DataStream<DlqRecord> parseErrors = parsedEvents.getSideOutput(ParseEventFunction.PARSE_ERROR_TAG);
 
-    // =========== happy path: stamp parsed events with event-time watermarks ===========
     DataStream<ProcessedEvent> timedEvents = parsedEvents
         .assignTimestampsAndWatermarks(
             WatermarkStrategy
@@ -133,16 +128,13 @@ public class StreamingJob {
                 // the watermark advance on active partitions (or to Long.MAX_VALUE when all idle).
                 .withIdleness(Duration.ofMinutes(1)))
         .name("event-time-watermarks");
-    // =====================================================================================
 
+    // Fan out by eventType to the sinks and aggregations; every branch turns its failures into a
+    // DlqRecord stream, and the union below funnels them all to the dead-letter topic.
     SingleOutputStreamOperator<ProcessedEvent> imagePipeline = buildImagePipeline(
         timedEvents.filter(e -> EventType.IMAGE.equals(e.getEventType())));
-
-    // =========== unhappy path: image fetch/upload failures or exhausted transient ===========
     DataStream<DlqRecord> minioErrors = imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG);
 
-    // Postgres write is a side effect; replay cannot fix a bad payload, so PermanentJdbcException
-    // is emitted as a DlqRecord on the main output rather than propagated.
     DataStream<DlqRecord> imagePostgresErrors = imagePipeline
         .process(new PostgresWriteFunction(DlqStage.IMAGE_POSTGRES))
         .name("image-to-postgres");
@@ -152,20 +144,18 @@ public class StreamingJob {
         .process(new PostgresWriteFunction(DlqStage.DATA_POSTGRES))
         .name("data-to-postgres");
 
-    // Payload fields are stripped before keying and windowing to keep checkpoint state small.
-    DataStream<DlqRecord> countErrors = buildWindowedCounts(timedEvents)
-        .process(new PostgresCount99mWriteFunction(DlqStage.COUNT_POSTGRES))
-        .name("counts-99m-to-postgres");
+    DataStream<DlqRecord> countErrors = buildEventTypeCounts(timedEvents)
+        .process(new PostgresCountAggWriteFunction(DlqStage.EVENT_TYPE_COUNT_POSTGRES))
+        .name("counts-agg-to-postgres");
 
-    DataStream<DlqRecord> imageSizeCountErrors = buildImageSizeBuckets(imagePipeline.getSideOutput(EnrichSplitFunction.SIZE_SAMPLE_TAG))
-        .process(new PostgresImageSizeBucketCount99mWriteFunction(DlqStage.IMAGE_SIZE_COUNT_POSTGRES))
-        .name("image-size-buckets-99m-to-postgres");
+    DataStream<DlqRecord> imageSizeCountErrors = buildImageSizeBuckets(imagePipeline.getSideOutput(EnrichSplitFunction.IMAGE_SIZE_BUCKET_TAG))
+        .process(new PostgresImageSizeBucketCountAggWriteFunction(DlqStage.IMAGE_SIZE_BUCKET_COUNT_POSTGRES))
+        .name("image-size-buckets-agg-to-postgres");
 
-    // All dead-letter paths converge into one Kafka producer. union is type-safe (every input is
-    // DataStream<DlqRecord>) and behavior-preserving: each record still reaches events-dlq, and
-    // its DlqStage carries the origin that the per-source sink names used to encode. A single
-    // sink couples DLQ backpressure across the branches, but dead-letter volume is low by
-    // nature (only failures), so this is acceptable and is the standard pattern.
+    // All dead-letter paths converge on one Kafka producer. The union is type-safe — every input
+    // is a DataStream<DlqRecord> — and each record's DlqStage identifies its origin, so one sink
+    // serves every branch instead of one sink per branch. That single sink couples DLQ back-pressure
+    // across branches, but dead-letter volume is low (only failures), so it is an acceptable trade-off.
     parseErrors
         .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors, imageSizeCountErrors)
         .map(new DlqMeterFunction())
@@ -178,57 +168,58 @@ public class StreamingJob {
   }
 
   /**
-   * Strips binary and payload fields, keys by eventType, applies the EVENT_TYPE_COUNT_WINDOW
-   * tumbling event-time window, and emits one EventTypeCount99m per (type, window) pair when each
-   * window closes.
+   * Counts events per eventType over EVENT_TYPE_COUNT_WINDOW tumbling event-time windows, emitting
+   * one EventTypeCountAgg per (type, window) pair when each window closes.
    */
-  static DataStream<EventTypeCount99m> buildWindowedCounts(DataStream<ProcessedEvent> withWatermarks) {
+  static DataStream<EventTypeCountAgg> buildEventTypeCounts(DataStream<ProcessedEvent> withWatermarks) {
     return withWatermarks
+        // The count needs only the type; nulling the payload fields here keeps the per-window
+        // buffer — held in managed state and snapshotted into every checkpoint — small.
         .map(e -> new ProcessedEvent(
             e.getId(), e.getEventType(), e.getEventTime(), e.getSource(),
             null, null, null, e.getDate()))
         .name("strip-for-window")
         .keyBy(ProcessedEvent::getEventType)
         .window(TumblingEventTimeWindows.of(EVENT_TYPE_COUNT_WINDOW))
-        .process(new ProcessWindowFunction<ProcessedEvent, EventTypeCount99m, String, TimeWindow>() {
+        .process(new ProcessWindowFunction<ProcessedEvent, EventTypeCountAgg, String, TimeWindow>() {
           @Override
           public void process(String key, Context context, Iterable<ProcessedEvent> elements,
-              Collector<EventTypeCount99m> out) {
+              Collector<EventTypeCountAgg> out) {
             long count = StreamSupport.stream(elements.spliterator(), false).count();
-            out.collect(new EventTypeCount99m(
+            out.collect(new EventTypeCountAgg(
                 Instant.ofEpochMilli(context.window().getStart()),
                 Instant.ofEpochMilli(context.window().getEnd()),
                 key,
                 count));
           }
         })
-        .name("count-by-type-99m");
+        .name("count-by-type-agg");
   }
 
   /**
-   * Keys image size samples by bucket label, applies the IMAGE_SIZE_WINDOW tumbling event-time
-   * window, and emits one ImageSizeBucketCount99m per (bucket, window) pair when each window closes.
+   * Counts stored images per size bucket over IMAGE_SIZE_BUCKET_COUNT_WINDOW tumbling event-time
+   * windows, emitting one ImageSizeBucketCountAgg per (bucket, window) pair when each window closes.
    */
-  static DataStream<ImageSizeBucketCount99m> buildImageSizeBuckets(
-      DataStream<ImageSizeBucket> sizeSamples) {
-    return sizeSamples
+  static DataStream<ImageSizeBucketCountAgg> buildImageSizeBuckets(
+      DataStream<ImageSizeBucket> sizeBuckets) {
+    return sizeBuckets
         // Flink rejects an enum as a key type, so key by the label; the explicit key type is
         // needed because a lambda's return type is not inferable.
         .keyBy(bucket -> bucket.label(), TypeInformation.of(String.class))
-        .window(TumblingEventTimeWindows.of(IMAGE_SIZE_WINDOW))
-        .process(new ProcessWindowFunction<ImageSizeBucket, ImageSizeBucketCount99m, String, TimeWindow>() {
+        .window(TumblingEventTimeWindows.of(IMAGE_SIZE_BUCKET_COUNT_WINDOW))
+        .process(new ProcessWindowFunction<ImageSizeBucket, ImageSizeBucketCountAgg, String, TimeWindow>() {
           @Override
           public void process(String bucketLabel, Context context, Iterable<ImageSizeBucket> elements,
-              Collector<ImageSizeBucketCount99m> out) {
+              Collector<ImageSizeBucketCountAgg> out) {
             long count = StreamSupport.stream(elements.spliterator(), false).count();
-            out.collect(new ImageSizeBucketCount99m(
+            out.collect(new ImageSizeBucketCountAgg(
                 Instant.ofEpochMilli(context.window().getStart()),
                 Instant.ofEpochMilli(context.window().getEnd()),
                 bucketLabel,
                 count));
           }
         })
-        .name("image-size-buckets-99m");
+        .name("image-size-buckets-agg");
   }
 
   /**

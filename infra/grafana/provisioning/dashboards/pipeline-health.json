@@ -73,7 +73,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "DLQ records / sec by stage",
-      "description": "Rate of dead-letter records emitted, broken down by the originating pipeline stage (PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, COUNT_POSTGRES). Backed by the custom dlq_records counter on the dlq-meter operator.",
+      "description": "Rate of dead-letter records emitted, broken down by the originating pipeline stage (PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, EVENT_TYPE_COUNT_POSTGRES). Backed by the custom dlq_records counter on the dlq-meter operator.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },

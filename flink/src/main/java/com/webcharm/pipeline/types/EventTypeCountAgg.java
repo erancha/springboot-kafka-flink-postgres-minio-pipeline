@@ -3,16 +3,16 @@ package com.webcharm.pipeline.types;
 import java.io.Serializable;
 import java.time.Instant;
 
-public class EventTypeCount99m implements Serializable {
+public class EventTypeCountAgg implements Serializable {
   private Instant windowStart;
   private Instant windowEnd;
   private String eventType;
   private long eventCount;
 
-  public EventTypeCount99m() {
+  public EventTypeCountAgg() {
   }
 
-  public EventTypeCount99m(Instant windowStart, Instant windowEnd, String eventType, long eventCount) {
+  public EventTypeCountAgg(Instant windowStart, Instant windowEnd, String eventType, long eventCount) {
     this.windowStart = windowStart;
     this.windowEnd = windowEnd;
     this.eventType = eventType;

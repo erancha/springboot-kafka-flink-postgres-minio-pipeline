@@ -72,9 +72,9 @@ public final class PreflightChecks {
       st.execute("SELECT id, event_type, event_time, source, payload, image_object_key "
           + "FROM processed_events WHERE false");
       st.execute("SELECT window_start, window_end, event_type, event_count, updated_at "
-          + "FROM event_type_counts_99m WHERE false");
+          + "FROM event_type_counts_agg WHERE false");
       st.execute("SELECT window_start, window_end, bucket, image_count, updated_at "
-          + "FROM image_size_buckets_99m WHERE false");
+          + "FROM image_size_buckets_agg WHERE false");
     }
   }
 

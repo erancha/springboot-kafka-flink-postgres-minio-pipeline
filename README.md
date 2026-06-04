@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml)
 
-**UI -> Spring Boot API -> Kafka -> Flink -> MinIO/Postgres**
+**Frontend -> Backend (Spring Boot API) -> Kafka -> Flink -> MinIO/Postgres**
 
 ## Summary
 
-The backend → Flink → sinks data path treats distributed-systems failure modes as first-class
+The backend → Kafka → Flink → sinks data path treats distributed-systems failure modes as first-class
 concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF (*)
 defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
 including Testcontainers integration suites; the CI badge above gates the backend and Flink unit

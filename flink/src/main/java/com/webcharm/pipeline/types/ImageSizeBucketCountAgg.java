@@ -3,16 +3,16 @@ package com.webcharm.pipeline.types;
 import java.io.Serializable;
 import java.time.Instant;
 
-public class ImageSizeBucketCount99m implements Serializable {
+public class ImageSizeBucketCountAgg implements Serializable {
   private Instant windowStart;
   private Instant windowEnd;
   private String bucket;
   private long imageCount;
 
-  public ImageSizeBucketCount99m() {
+  public ImageSizeBucketCountAgg() {
   }
 
-  public ImageSizeBucketCount99m(Instant windowStart, Instant windowEnd, String bucket, long imageCount) {
+  public ImageSizeBucketCountAgg(Instant windowStart, Instant windowEnd, String bucket, long imageCount) {
     this.windowStart = windowStart;
     this.windowEnd = windowEnd;
     this.bucket = bucket;

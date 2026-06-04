@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.sinks;
 
-import com.webcharm.pipeline.types.ImageSizeBucketCount99m;
+import com.webcharm.pipeline.types.ImageSizeBucketCountAgg;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Timestamp;
@@ -9,35 +9,35 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * JDBC writer for image_size_buckets_99m. Upserts one row per (window_start, bucket) pair.
+ * JDBC writer for image_size_buckets_agg. Upserts one row per (window_start, bucket) pair.
  */
-public class PostgresImageSizeBucketCount99mWriter extends JdbcWriterBase<ImageSizeBucketCount99m> {
+public class PostgresImageSizeBucketCountAggWriter extends JdbcWriterBase<ImageSizeBucketCountAgg> {
 
-  private static final Logger log = LoggerFactory.getLogger(PostgresImageSizeBucketCount99mWriter.class);
+  private static final Logger log = LoggerFactory.getLogger(PostgresImageSizeBucketCountAggWriter.class);
 
   private static final String SQL =
-      "INSERT INTO image_size_buckets_99m (window_start, window_end, bucket, image_count, updated_at) "
+      "INSERT INTO image_size_buckets_agg (window_start, window_end, bucket, image_count, updated_at) "
           + "VALUES (?, ?, ?, ?, ?) "
           + "ON CONFLICT (window_start, bucket) DO UPDATE SET window_end = EXCLUDED.window_end, "
           + "image_count = EXCLUDED.image_count, updated_at = EXCLUDED.updated_at";
 
-  public PostgresImageSizeBucketCount99mWriter() {
+  public PostgresImageSizeBucketCountAggWriter() {
     super(envPool(), SQL);
-    log.info("PostgresImageSizeBucketCount99mWriter ready");
+    log.info("PostgresImageSizeBucketCountAggWriter ready");
   }
 
-  PostgresImageSizeBucketCount99mWriter(String url, String user, String password) {
+  PostgresImageSizeBucketCountAggWriter(String url, String user, String password) {
     super(createPool(url, user, password), SQL);
-    log.info("PostgresImageSizeBucketCount99mWriter ready");
+    log.info("PostgresImageSizeBucketCountAggWriter ready");
   }
 
-  PostgresImageSizeBucketCount99mWriter(Connection conn) {
+  PostgresImageSizeBucketCountAggWriter(Connection conn) {
     super(conn, SQL);
-    log.info("PostgresImageSizeBucketCount99mWriter ready");
+    log.info("PostgresImageSizeBucketCountAggWriter ready");
   }
 
   @Override
-  public void write(ImageSizeBucketCount99m value) throws IOException {
+  public void write(ImageSizeBucketCountAgg value) throws IOException {
     executeWithRetry(sqlStmt -> {
       sqlStmt.setTimestamp(1, Timestamp.from(value.getWindowStart()));
       sqlStmt.setTimestamp(2, Timestamp.from(value.getWindowEnd()));

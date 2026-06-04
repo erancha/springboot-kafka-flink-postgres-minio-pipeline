@@ -102,11 +102,11 @@
 
   <rect x="250" y="430" width="255" height="115" class="sink" rx="5"/>
   <text x="377" y="451" class="box-title" text-anchor="middle">PostgreSQL</text>
-  <text x="377" y="471" class="resp" text-anchor="middle">analytics warehouse</text>
+  <text x="377" y="471" class="resp" text-anchor="middle">analytics warehouse (simulation)</text>
   <text x="377" y="486" class="resp" text-anchor="middle">processed events + windowed aggregates</text>
   <text x="377" y="505" class="cfg" text-anchor="middle" style="font-size: 9px;">Port · env:POSTGRES_PORT · db env:POSTGRES_DB</text>
   <text x="377" y="524" class="step" text-anchor="middle" style="font-size: 9px;">tables: processed_events</text>
-  <text x="377" y="537" class="step" text-anchor="middle" style="font-size: 8.5px;">event_type_counts_99m · image_size_buckets_99m</text>
+  <text x="377" y="537" class="step" text-anchor="middle" style="font-size: 8.5px;">event_type_counts_agg · image_size_buckets_agg</text>
 
   <rect x="560" y="435" width="150" height="110" class="observ" rx="5"/>
   <text x="635" y="460" class="box-title" text-anchor="middle">Grafana</text>

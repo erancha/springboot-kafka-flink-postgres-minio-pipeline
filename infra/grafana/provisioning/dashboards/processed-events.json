@@ -147,7 +147,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT window_start AS time,\n       event_count::bigint AS value,\n       event_type AS metric\nFROM event_type_counts_99m\nWHERE $__timeFilter(window_start)\nORDER BY window_start;"
+          "rawSql": "SELECT window_start AS time,\n       event_count::bigint AS value,\n       event_type AS metric\nFROM event_type_counts_agg\nWHERE $__timeFilter(window_start)\nORDER BY window_start;"
         }
       ],
       "fieldConfig": {
@@ -186,7 +186,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT bucket,\n       SUM(image_count)::bigint AS count\nFROM image_size_buckets_99m\nGROUP BY bucket\nORDER BY CASE bucket WHEN '<=1MB' THEN 1 WHEN '<=5MB' THEN 2 WHEN '<=10MB' THEN 3 ELSE 4 END;"
+          "rawSql": "SELECT bucket,\n       SUM(image_count)::bigint AS count\nFROM image_size_buckets_agg\nGROUP BY bucket\nORDER BY CASE bucket WHEN '<=1MB' THEN 1 WHEN '<=5MB' THEN 2 WHEN '<=10MB' THEN 3 ELSE 4 END;"
         }
       ],
       "options": {
@@ -221,7 +221,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT window_start AS time,\n       image_count::bigint AS value,\n       bucket AS metric\nFROM image_size_buckets_99m\nWHERE $__timeFilter(window_start)\nORDER BY window_start;"
+          "rawSql": "SELECT window_start AS time,\n       image_count::bigint AS value,\n       bucket AS metric\nFROM image_size_buckets_agg\nWHERE $__timeFilter(window_start)\nORDER BY window_start;"
         }
       ],
       "fieldConfig": {

@@ -1,8 +1,8 @@
 package com.webcharm.pipeline;
 
-import com.webcharm.pipeline.types.EventTypeCount99m;
+import com.webcharm.pipeline.types.EventTypeCountAgg;
 import com.webcharm.pipeline.types.ImageSizeBucket;
-import com.webcharm.pipeline.types.ImageSizeBucketCount99m;
+import com.webcharm.pipeline.types.ImageSizeBucketCountAgg;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -54,15 +54,15 @@ class StreamingJobIT {
                     .withTimestampAssigner((e, t) -> e.getEventTime().toEpochMilli()))
             .name("test-source");
 
-        List<EventTypeCount99m> results = new ArrayList<>();
-        try (CloseableIterator<EventTypeCount99m> it =
-                StreamingJob.buildWindowedCounts(source).executeAndCollect()) {
+        List<EventTypeCountAgg> results = new ArrayList<>();
+        try (CloseableIterator<EventTypeCountAgg> it =
+                StreamingJob.buildEventTypeCounts(source).executeAndCollect()) {
             it.forEachRemaining(results::add);
         }
 
         Map<String, Long> window1 = results.stream()
             .filter(r -> r.getWindowStart().equals(base))
-            .collect(Collectors.toMap(EventTypeCount99m::getEventType, EventTypeCount99m::getEventCount));
+            .collect(Collectors.toMap(EventTypeCountAgg::getEventType, EventTypeCountAgg::getEventCount));
 
         assertEquals(3L, window1.get("DATA"),  "DATA count in [00:00, 00:05)");
         assertEquals(2L, window1.get("IMAGE"), "IMAGE count in [00:00, 00:05)");
@@ -91,17 +91,17 @@ class StreamingJobIT {
                     .withTimestampAssigner((e, t) -> e.getEventTime().toEpochMilli()))
             .map(e -> ImageSizeBucket.valueOf(e.getSource()))
             .returns(TypeInformation.of(ImageSizeBucket.class))
-            .name("test-size-samples");
+            .name("test-size-buckets");
 
-        List<ImageSizeBucketCount99m> results = new ArrayList<>();
-        try (CloseableIterator<ImageSizeBucketCount99m> it =
+        List<ImageSizeBucketCountAgg> results = new ArrayList<>();
+        try (CloseableIterator<ImageSizeBucketCountAgg> it =
                 StreamingJob.buildImageSizeBuckets(samples).executeAndCollect()) {
             it.forEachRemaining(results::add);
         }
 
         Map<String, Long> window1 = results.stream()
             .filter(r -> r.getWindowStart().equals(base))
-            .collect(Collectors.toMap(ImageSizeBucketCount99m::getBucket, ImageSizeBucketCount99m::getImageCount));
+            .collect(Collectors.toMap(ImageSizeBucketCountAgg::getBucket, ImageSizeBucketCountAgg::getImageCount));
 
         assertEquals(2L, window1.get("<=1MB"), "<=1MB count in [00:00, 00:10)");
         assertEquals(1L, window1.get("<=5MB"), "<=5MB count in [00:00, 00:10)");
