@@ -54,7 +54,9 @@ This project is a [docker-compose](docker-compose.yml) deployable real-time data
 
 ### Backend
 
-The backend is a narrow, synchronous validation gate: it rejects request bodies over `MAX_REQUEST_CONTENT_LENGTH` as too large (HTTP 413) before parsing, checks request structure and basic constraints (required fields, a non-empty `payload` for `DATA`, allowed `eventType` values), optionally validates `DATA` payloads against a configured JSON Schema (`EVENT_PAYLOAD_SCHEMA`), normalizes `eventType` (e.g. `TEXT` is normalized to `DATA`), and for `IMAGE` URL events enforces an SSRF allowlist (`IMAGE_URL_ALLOWED_HOSTS`) at ingestion — rejecting disallowed hosts as forbidden (HTTP 403) and any other bad input with a 4xx (client error) status before anything reaches Kafka. Heavier validation (fetching the URL, checking content-type/size) is intentionally deferred to Flink to avoid adding latency at the ingestion boundary.
+The backend is a narrow, synchronous validation gate: it rejects request bodies over `MAX_REQUEST_CONTENT_LENGTH` as too large (HTTP 413) before parsing, checks request structure and basic constraints (required fields, a non-empty `payload` for `DATA`, allowed `eventType` values), optionally validates `DATA` payloads against a configured JSON Schema (`EVENT_PAYLOAD_SCHEMA`), normalizes `eventType` (e.g. `TEXT` is normalized to `DATA`), and for `IMAGE` URL events enforces an SSRF allowlist (`IMAGE_URL_ALLOWED_HOSTS`) at ingestion — rejecting disallowed hosts as forbidden (HTTP 403) and any other bad input with a 4xx (client error) status before anything reaches Kafka.
+
+The SSRF host check sits at ingestion, the trust boundary where user-supplied URLs enter, so a disallowed host never reaches Kafka and Flink fetches without re-checking. This assumes the backend is the sole producer to `events`; exposing the topic to untrusted producers would require duplicating the check at the fetch.
 
 ### Pipeline
 

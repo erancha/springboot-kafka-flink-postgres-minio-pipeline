@@ -188,6 +188,8 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
    * I/O path bounded.
    */
   private CompletableFuture<byte[]> fetch(String url) {
+    // Host already SSRF-checked at ingestion (IMAGE_URL_ALLOWED_HOSTS) and the events topic carries
+    // only backend-produced URLs, so it is not re-checked here; followRedirects(NEVER) blocks 3xx pivots.
     HttpRequest req = HttpRequest.newBuilder(URI.create(url))
         .timeout(Duration.ofSeconds(readTimeoutSecs))
         .GET()
