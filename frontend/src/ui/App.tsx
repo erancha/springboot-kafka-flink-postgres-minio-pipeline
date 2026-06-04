@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-
-type EventType = 'DATA' | 'IMAGE';
+import { useEffect, useMemo, useState } from 'react';
+import type { EventRequest, EventType, PayloadSchema, UploadNotification } from './types';
+import { clampSendCount } from './sendCounts';
+import { shouldReportProgress } from './progress';
+import { DataPayloadEditor, EventControls, ImageInputs, ResultPanel, StatusBanner } from './components';
+import './App.css';
 
 export default function App() {
   const [eventType, setEventType] = useState<EventType>('DATA');
@@ -11,7 +14,7 @@ export default function App() {
   const [result, setResult] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
-  const [uploadNotification, setUploadNotification] = useState<{ type: 'uploading' | 'success' | 'error'; message: string } | null>(null);
+  const [uploadNotification, setUploadNotification] = useState<UploadNotification | null>(null);
   const [sendCount, setSendCount] = useState<number>(1);
   const [delaySeconds, setDelaySeconds] = useState<number>(0);
   const [allowedKeys, setAllowedKeys] = useState<string[]>([]);
@@ -23,11 +26,11 @@ export default function App() {
       try {
         const resp = await fetch('/event-payload-schema.json');
         if (!resp.ok) return;
-        const schema: any = await resp.json();
+        const schema: PayloadSchema = await resp.json();
         if (cancelled) return;
-        const keys = Object.keys(schema?.properties ?? {});
+        const keys = Object.keys(schema.properties ?? {});
         if (keys.length) setAllowedKeys(keys);
-        const sample = Array.isArray(schema?.sample) ? schema.sample[0] : undefined;
+        const sample = Array.isArray(schema.sample) ? schema.sample[0] : undefined;
         if (sample) setJsonText(JSON.stringify(sample, null, 2));
       } catch {
         // Keep the built-in fallback default when the schema asset is unavailable.
@@ -38,21 +41,20 @@ export default function App() {
     };
   }, []);
 
+  // The available send counts differ per event type, so a count valid for one type may be stale
+  // after switching; clamp it back to the type's default rather than firing an invalid fan-out.
   useEffect(() => {
-    if (eventType === 'IMAGE') {
-      if (sendCount === 1 || sendCount === 10 || sendCount === 100 || sendCount === 1000) return;
-      setSendCount(1);
-    } else if (eventType === 'DATA') {
-      if (sendCount === 1 || sendCount === 10 || sendCount === 100 || sendCount === 1000 || sendCount === 10000 || sendCount === 100000) return;
-      setSendCount(1);
-    }
-  }, [eventType, sendCount]);
+    setSendCount((current) => clampSendCount(eventType, current));
+  }, [eventType]);
 
   const canSubmit = useMemo(() => {
     if (eventType === 'DATA') return true;
     if (eventType === 'IMAGE') return Boolean(imageUrl.trim()) || Boolean(file);
     return false;
   }, [eventType, imageUrl, file]);
+
+  const isFileUpload = eventType === 'IMAGE' && Boolean(file);
+  const submitLabel = busy ? (isFileUpload ? 'Uploading…' : 'Sending…') : isFileUpload ? 'Upload & send' : 'Send event';
 
   async function submit() {
     setBusy(true);
@@ -64,7 +66,7 @@ export default function App() {
         const fd = new FormData();
         fd.append('file', file);
 
-        setUploadNotification({ type: 'uploading', message: `Uploading ${file.name}…` });
+        setUploadNotification({ variant: 'uploading', message: `Uploading ${file.name}…` });
         const resp = await fetch('/api/events/image-upload', {
           method: 'POST',
           body: fd,
@@ -72,27 +74,18 @@ export default function App() {
 
         const body = await resp.text();
         if (!resp.ok) {
-          setUploadNotification({ type: 'error', message: `Upload failed: ${body}` });
+          setUploadNotification({ variant: 'error', message: `Upload failed: ${body}` });
           return;
         }
-        setUploadNotification({ type: 'success', message: `Uploaded successfully` });
+        setUploadNotification({ variant: 'success', message: `Uploaded successfully` });
         setResult(body);
         return;
       }
 
-      let payload: unknown = undefined;
+      const req: EventRequest = { eventType };
       if (eventType === 'DATA') {
-        payload = JSON.parse(jsonText);
+        req.payload = JSON.parse(jsonText);
       }
-
-      const req: any = {
-        eventType,
-      };
-
-      if (eventType === 'DATA') {
-        req.payload = payload;
-      }
-
       if (eventType === 'IMAGE' && imageUrl.trim()) {
         req.imageUrl = imageUrl.trim();
       }
@@ -108,152 +101,66 @@ export default function App() {
 
         const body = await resp.text();
         if (!resp.ok) throw new Error(body);
-        if (sendCount === 1) {
-          setResult(body);
-        } else {
-          setResult(`Sent ${i + 1}/${sendCount}`);
+        const sent = i + 1;
+        if (shouldReportProgress(sent, sendCount)) {
+          setResult(sendCount === 1 ? body : `Sent ${sent}/${sendCount}`);
         }
 
         if (delaySeconds > 0 && i < sendCount - 1) {
           await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
         }
       }
-    } catch (e: any) {
-      setErrorMessage(String(e?.message ?? e));
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ fontFamily: 'system-ui, Arial', padding: 24, maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ margin: 0 }}>Real-time Pipeline UI - Tester</h1>
-      <p style={{ color: '#444' }}>
+    <div className='page'>
+      <h1 className='page__heading'>Real-time Pipeline UI - Tester</h1>
+      <p className='page__intro'>
         Submit <b>DATA</b> or <b>IMAGE</b> events. The backend publishes to Kafka; Flink processes into Postgres / MinIO.
       </p>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 16 }}>
-        <label>
-          Event type:{' '}
-          <select value={eventType} onChange={(e) => setEventType(e.target.value as EventType)}>
-            <option value='DATA'>DATA</option>
-            <option value='IMAGE'>IMAGE</option>
-          </select>
-        </label>
+      <EventControls
+        eventType={eventType}
+        onEventTypeChange={setEventType}
+        sendCount={sendCount}
+        onSendCountChange={setSendCount}
+        sendCountLocked={isFileUpload}
+        delaySeconds={delaySeconds}
+        onDelayChange={setDelaySeconds}
+        submitDisabled={!canSubmit || busy}
+        submitLabel={submitLabel}
+        onSubmit={submit}
+      />
 
-        <label>
-          Send:{' '}
-          <select value={String(sendCount)} onChange={(e) => setSendCount(Number(e.target.value))} disabled={eventType === 'IMAGE' && Boolean(file)}>
-            <option value='1'>1</option>
-            <option value='10'>10</option>
-            <option value='100'>100</option>
-            <option value='1000'>1,000</option>
-            {eventType === 'DATA' && (
-              <>
-                <option value='10000'>10,000</option>
-                <option value='100000'>100,000</option>
-              </>
-            )}
-          </select>
-        </label>
-
-        {sendCount > 1 && (
-          <label>
-            Delay (s):{' '}
-            <input
-              type='number'
-              min={0}
-              max={60}
-              value={delaySeconds}
-              onChange={(e) => setDelaySeconds(Math.min(60, Math.max(0, Number(e.target.value))))}
-              style={{ width: 56 }}
-            />
-          </label>
-        )}
-
-        <button disabled={!canSubmit || busy} onClick={submit}>
-          {busy ? (eventType === 'IMAGE' && file ? 'Uploading…' : 'Sending…') : (eventType === 'IMAGE' && file ? 'Upload & send' : 'Send event')}
-        </button>
-      </div>
-
-      {eventType === 'DATA' && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>JSON payload</div>
-          {allowedKeys.length > 0 && (
-            <div style={{ color: '#555', fontSize: 12, marginBottom: 8 }}>
-              Allowed keys: {allowedKeys.join(', ')}
-            </div>
-          )}
-          <textarea
-            value={jsonText}
-            onChange={(e) => setJsonText(e.target.value)}
-            rows={12}
-            style={{ width: '100%', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas', fontSize: 13 }}
-          />
-        </div>
-      )}
+      {eventType === 'DATA' && <DataPayloadEditor allowedKeys={allowedKeys} jsonText={jsonText} onChange={setJsonText} />}
 
       {eventType === 'IMAGE' && (
-        <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
-          <label style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontWeight: 600 }}>Image URL (optional)</div>
-            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder='https://example.com/image.jpg' style={{ padding: 8 }} />
-          </label>
-
-          <label style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontWeight: 600 }}>Upload file (optional)</div>
-            <input
-              type='file'
-              accept='image/*'
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setUploadNotification(null);
-              }}
-            />
-          </label>
-
-          <div style={{ color: '#555' }}>
-            {file ? <span>File will be uploaded when you click <b>Upload &amp; send</b>.</span> : 'You can provide either URL or upload a file.'}
-          </div>
-
-          {uploadNotification && (
-            <div
-              style={{
-                padding: '8px 12px',
-                borderRadius: 4,
-                fontWeight: 500,
-                background: uploadNotification.type === 'uploading' ? '#fff8e1' : uploadNotification.type === 'success' ? '#e8f5e9' : '#fdecea',
-                color: uploadNotification.type === 'uploading' ? '#795548' : uploadNotification.type === 'success' ? '#2e7d32' : '#c62828',
-                border: `1px solid ${uploadNotification.type === 'uploading' ? '#ffe082' : uploadNotification.type === 'success' ? '#a5d6a7' : '#ef9a9a'}`,
-              }}>
-              {uploadNotification.message}
-            </div>
-          )}
-        </div>
+        <ImageInputs
+          imageUrl={imageUrl}
+          onImageUrlChange={setImageUrl}
+          hasFile={Boolean(file)}
+          onFileChange={(next) => {
+            setFile(next);
+            setUploadNotification(null);
+          }}
+          notification={uploadNotification}
+        />
       )}
 
       {errorMessage && (
-        <div
-          role='alert'
-          style={{
-            marginTop: 16,
-            padding: '8px 12px',
-            borderRadius: 4,
-            fontWeight: 500,
-            background: '#fdecea',
-            color: '#c62828',
-            border: '1px solid #ef9a9a',
-          }}>
+        <StatusBanner variant='error' alert className='section'>
           ⚠ {errorMessage}
-        </div>
+        </StatusBanner>
       )}
 
-      <div style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Result</div>
-        <pre style={{ background: '#f6f6f6', padding: 12, minHeight: 80, overflow: 'auto' }}>{result}</pre>
-      </div>
+      <ResultPanel result={result} />
 
-      <div style={{ marginTop: 20, color: '#666', fontSize: 12 }}>
+      <div className='footer'>
         UI is served via Nginx on <code>http://localhost:3030</code>. Kafka UI on <code>http://localhost:8088</code>.
       </div>
     </div>
