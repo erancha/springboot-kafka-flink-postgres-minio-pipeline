@@ -21,18 +21,18 @@ This is an exercise focused on the data path's failure handling, not a productio
 
 - **Authentication / authorization** — the ingestion edge (`POST /api/events` and the React UI) is an unauthenticated local tester, not a hardened production boundary: no login, API key, tenant isolation, or rate limiting, with the SSRF allowlist as the only request-level guard.
 - **Secrets management & transport security** — credentials are supplied via a gitignored `.env` (only `.env.example`, with blank values, is committed), but there is no Vault / Secrets Manager integration or rotation, and inter-service traffic on the local Docker network is plaintext (no TLS).
-- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](flink/PIPELINE_FLOW.md#dlq-operations).
-- **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](flink/PIPELINE_FLOW.md#out-of-scope).
+- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/PIPELINE_FLOW.md#dlq-operations).
+- **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](docs/PIPELINE_FLOW.md#out-of-scope).
 - **Paging / alerting** — Grafana dashboards are for inspection only; no Alertmanager is wired to any signal.
 
 ## Overview
 
-This project is a [docker-compose](docker-compose.yml) deployable real-time data pipeline:
+This project is a [docker-compose](scripts/docker-compose.yml) deployable real-time data pipeline:
 
 - UI (React) sends events to the API
 - API (Spring Boot) validates, normalizes, and publishes JSON events to Kafka
 - Flink consumes Kafka events and processes them:
-  - `IMAGE` events **always** land in MinIO (`images/{date}/{id}.{ext}`), whether the image arrives as an uploaded file (stored by the backend at ingestion) or as a URL (fetched and **cloned** into MinIO by Flink — only the object key is persisted to Postgres, never the source URL). [Why clone the URL instead of referencing it](flink/PIPELINE_FLOW.md#async-image-enrichment): durable, self-contained, ...
+  - `IMAGE` events **always** land in MinIO (`images/{date}/{id}.{ext}`), whether the image arrives as an uploaded file (stored by the backend at ingestion) or as a URL (fetched and **cloned** into MinIO by Flink — only the object key is persisted to Postgres, never the source URL). [Why clone the URL instead of referencing it](docs/PIPELINE_FLOW.md#async-image-enrichment): durable, self-contained, ...
   - `DATA` events are stored in Postgres (`processed_events`)
 
 ## Architecture
@@ -44,7 +44,7 @@ This project is a [docker-compose](docker-compose.yml) deployable real-time data
 | frontend   | React + Vite, built and served via Nginx                                                                                                                                                                                                                                                                                                     | http://localhost:3030                                                                  |
 | backend    | Spring Boot API: [receives](backend/src/main/java/com/webcharm/backend/api/EventController.java) requests, [validates and normalizes](backend/src/main/java/com/webcharm/backend/model/EventRequest.java) input (e.g. `TEXT` → `DATA`), and [publishes](backend/src/main/java/com/webcharm/backend/kafka/EventProducer.java) events to Kafka | http://localhost:8030                                                                  |
 | kafka      | Kafka (KRaft mode, i.e. no ZooKeeper) + Kafka UI                                                                                                                                                                                                                                                                                             | http://localhost:8088                                                                  |
-| flink      | JobManager / TaskManager + job submitter running the streaming job ([StreamingJob.java](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java), built via [flink/pom.xml](flink/pom.xml))                                                                                                                                              | http://localhost:8081 (commented out by default; to [uncomment](docker-compose.yml))   |
+| flink      | JobManager / TaskManager + job submitter running the streaming job ([StreamingJob.java](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java), built via [flink/pom.xml](flink/pom.xml))                                                                                                                                              | http://localhost:8081 (commented out by default; to [uncomment](scripts/docker-compose.yml))   |
 | minio      | Local S3-compatible object storage                                                                                                                                                                                                                                                                                                           | Console: http://localhost:9011 (user `minio`, pass `minio123`)                         |
 | postgres   | Analytics database simulating a data warehouse                                                                                                                                                                                                                                                                                               | localhost:5432 (db `warehouse`, user `postgres`, pass `postgres`)                      |
 | grafana    | Pre-provisioned dashboards: Postgres analytics, and a Flink pipeline-health dashboard (consumer lag, job restarts, checkpoint health, backpressure, DLQ volume by stage, retryable enrichment failures) backed by the Prometheus datasource                                                                                                  | [http://localhost:3031](http://localhost:3031/dashboards) (user `admin`, pass `admin`) |
@@ -72,7 +72,7 @@ The SSRF host check sits at ingestion, the trust boundary where user-supplied UR
 
 #### Flink
 
-Everything after Kafka is the Flink job's responsibility; see [`flink/PIPELINE_FLOW.md`](flink/PIPELINE_FLOW.md).
+Everything after Kafka is the Flink job's responsibility; see [`docs/PIPELINE_FLOW.md`](docs/PIPELINE_FLOW.md).
 
 - The Flink job uses routing based on `eventType` and writes to two different sinks (Postgres for `DATA`, MinIO for `IMAGE`).
 - MinIO bucket `images` is created by `minio-init` on startup. (To browse stored images: see [Architecture](#architecture).)
@@ -105,7 +105,7 @@ Additional commands:
 ```bash
 ./scripts/start.sh --help               # start options (--restart, --rebuild)
 ./scripts/stop.sh --help                # stop the stack; --remove-volumes removes volumes, --prune-dangling-images also purges build artifacts
-./scripts/test.sh --help                # run tests; see TESTING.md for suite details
+./scripts/test.sh --help                # run tests; see docs/TESTING.md for suite details
 ./scripts/stress.sh --help              # concurrent DATA/IMAGE-url load generator (requires --profile testing for IMAGE)
 
 ./scripts/ps.sh                         # show running containers and service URLs
@@ -115,8 +115,8 @@ Additional commands:
 
 ## Testing
 
-Unit, component, and integration test suites and how to run them are documented in [TESTING.md](TESTING.md).
+Unit, component, and integration test suites and how to run them are documented in [TESTING.md](docs/TESTING.md).
 
 ## Analytics Queries
 
-Post-hoc vs. Flink-pre-aggregated queries, the windowing behavior, and how to run them (CLI and Grafana) are documented in [ANALYTICS.md](ANALYTICS.md).
+Post-hoc vs. Flink-pre-aggregated queries, the windowing behavior, and how to run them (CLI and Grafana) are documented in [ANALYTICS.md](docs/ANALYTICS.md).

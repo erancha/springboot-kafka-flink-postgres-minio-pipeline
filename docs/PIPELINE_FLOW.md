@@ -92,7 +92,7 @@ operator task thread: the task thread never blocks on a fetch, upload, or query,
 and every external call is time-bounded under the checkpoint budget, so a
 slow/bad image or a slow/hung DBMS cannot stall checkpoint barriers. (Scope: the
 event-processing path; the windowed branches are covered in
-[`../ANALYTICS.md`](../ANALYTICS.md).)
+[`ANALYTICS.md`](ANALYTICS.md).)
 
 ```mermaid
 sequenceDiagram

@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
     --profile)
       PROFILE="${2:-}"
       shift
-      OVERRIDE_FILE="$ROOT_DIR/docker-compose.${PROFILE}.yml"
+      OVERRIDE_FILE="$ROOT_DIR/scripts/docker-compose.${PROFILE}.yml"
       if [[ ! -f "$OVERRIDE_FILE" ]]; then
         echo "Unknown profile '$PROFILE': $OVERRIDE_FILE not found" >&2
         exit 1

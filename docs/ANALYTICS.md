@@ -1,6 +1,6 @@
 # Analytics Queries
 
-All analytics queries are defined in [infra/postgres/analytics.sql](infra/postgres/analytics.sql) and query PostgreSQL. They differ in _when_ they are computed:
+All analytics queries are defined in [infra/postgres/analytics.sql](../infra/postgres/analytics.sql) and query PostgreSQL. They differ in _when_ they are computed:
 
 **Post-hoc analytics** (computed at query time):
 
@@ -19,7 +19,7 @@ Flink computes continuously; queries read pre-computed results (no query-time la
 
 **Flink windowing behavior, by example:**
 
-Take the per-type count ([`StreamingJob.buildEventTypeCounts`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)): it groups events by `eventType` within each 5-minute window and counts them, producing one row per `(eventType, window_start)`. Flink writes a row only for a type that received at least one event in that window — there are no zero rows. So a window holds a row for every type that saw traffic and none for a type that saw none: the same window can have a `DATA` row and no `IMAGE` row, or the reverse. Emitting zero-count rows would require explicit late-firing or allowed-lateness policies.
+Take the per-type count ([`StreamingJob.buildEventTypeCounts`](../flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)): it groups events by `eventType` within each 5-minute window and counts them, producing one row per `(eventType, window_start)`. Flink writes a row only for a type that received at least one event in that window — there are no zero rows. So a window holds a row for every type that saw traffic and none for a type that saw none: the same window can have a `DATA` row and no `IMAGE` row, or the reverse. Emitting zero-count rows would require explicit late-firing or allowed-lateness policies.
 
 ## Running the queries
 
@@ -36,4 +36,4 @@ Access [http://localhost:3031](http://localhost:3031/d/processed-events/processe
 
 Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is presentation (one-off results vs. live dashboard).
 
-![Grafana dashboard screenshot](docs/Grafana.jpg)
+![Grafana dashboard screenshot](Grafana.jpg)

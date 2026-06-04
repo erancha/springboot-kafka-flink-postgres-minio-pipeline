@@ -3,10 +3,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# The compose files live in scripts/, but their bind-mount sources and build
+# contexts (./infra, ./backend, ./flink, ./frontend) are written relative to the
+# repo root. --project-directory pins that resolution base to ROOT_DIR so those
+# paths stay valid regardless of where the compose file sits.
 compose() {
-  local -a files=(-f "$ROOT_DIR/docker-compose.yml")
+  local -a files=(-f "$ROOT_DIR/scripts/docker-compose.yml")
   [[ -n "${COMPOSE_OVERRIDE:-}" ]] && files+=(-f "$COMPOSE_OVERRIDE")
-  (cd "$ROOT_DIR" && docker compose "${files[@]}" "$@")
+  (cd "$ROOT_DIR" && docker compose --project-directory "$ROOT_DIR" "${files[@]}" "$@")
 }
 
 require_docker() {
