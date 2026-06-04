@@ -6,14 +6,19 @@
 
 ## Summary
 
-The backend → Kafka → Flink → sinks data path treats distributed-systems failure modes as first-class
-concerns: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing, SSRF (*)
-defense, exactly-once reasoning, and real observability. The depth is backed by 100+ tests,
-including Testcontainers integration suites; the CI badge above gates the backend and Flink unit
-tests only, while the integration and frontend suites are run separately.
+The engineering focus of this project is the data path — backend → Kafka → Flink → sinks — and its
+failure handling: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing,
+exactly-once reasoning, and observability.
 
-(*) SSRF (Server-Side Request Forgery): blocking attacker-supplied image URLs from reaching
-internal hosts — e.g. an `IMAGE` event with `http://169.254.169.254/` to probe cloud metadata.
+The backend is the pipeline's ingestion gate: it validates and normalizes every request before
+anything reaches Kafka, and enforces an SSRF (Server-Side Request Forgery) allowlist so
+attacker-supplied image URLs can't reach internal hosts — e.g. an `IMAGE` event with
+`http://169.254.169.254/` to probe cloud metadata. Doing this at the edge keeps disallowed hosts
+out of Kafka entirely, so Flink fetches without re-checking.
+
+Both the data-path handling and the ingestion gate are backed by 100+ tests, including
+Testcontainers integration suites; the CI badge above gates the backend and Flink unit tests only,
+while the integration and frontend suites are run separately.
 
 ### Out of scope
 
