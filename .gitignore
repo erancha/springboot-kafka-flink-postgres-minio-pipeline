@@ -17,3 +17,7 @@ org/
 !.env.example
 flink/**/*.class
 docs/todo.md
+
+# JMeter: vendored runtime and per-run results are local artifacts
+jmeter/.runtime/
+jmeter/results/
