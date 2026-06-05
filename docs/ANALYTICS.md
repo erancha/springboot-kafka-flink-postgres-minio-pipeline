@@ -1,6 +1,6 @@
 # Analytics Queries
 
-All analytics queries are defined in [infra/postgres/analytics.sql](../infra/postgres/analytics.sql) and query PostgreSQL. They differ in _when_ they are computed:
+All analytics queries are defined in [infra/postgres/analytics.sql](../infra/postgres/analytics.sql) and query PostgreSQL; the tables they read are created in [infra/postgres/init.sql](../infra/postgres/init.sql). They differ in _when_ they are computed:
 
 **Post-hoc analytics** (computed at query time):
 

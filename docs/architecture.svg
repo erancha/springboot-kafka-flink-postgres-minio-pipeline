@@ -59,61 +59,58 @@
   <text x="879" y="126" class="cfg" text-anchor="middle">Port · env:KAFKA_UI_PORT</text>
 
   <!-- ===================== FLINK ROW ===================== -->
-  <rect x="20" y="170" width="710" height="240" class="flink-region" rx="10"/>
-  <text x="375" y="190" class="region-label" text-anchor="middle" style="font-size: 14px;">Flink Cluster <tspan class="mode">[checkpointed · event-time + watermarks]</tspan></text>
+  <rect x="20" y="185" width="710" height="240" class="flink-region" rx="10"/>
+  <text x="375" y="205" class="region-label" text-anchor="middle" style="font-size: 14px;">Flink Cluster <tspan class="mode">[checkpointed · event-time + watermarks]</tspan></text>
 
-  <rect x="32" y="205" width="142" height="80" class="flink-inner" rx="5"/>
-  <text x="103" y="226" class="box-title" text-anchor="middle" style="fill: #7d3c98;">JobManager</text>
-  <text x="103" y="245" class="resp" text-anchor="middle">coordinate job</text>
-  <text x="103" y="259" class="resp" text-anchor="middle">checkpoints · recovery</text>
-  <text x="103" y="277" class="cfg" text-anchor="middle">UI disabled (compose)</text>
+  <rect x="32" y="220" width="142" height="80" class="flink-inner" rx="5"/>
+  <text x="103" y="241" class="box-title" text-anchor="middle" style="fill: #7d3c98;">JobManager</text>
+  <text x="103" y="260" class="resp" text-anchor="middle">coordinate job</text>
+  <text x="103" y="274" class="resp" text-anchor="middle">checkpoints · recovery</text>
+  <text x="103" y="292" class="cfg" text-anchor="middle">UI disabled (compose)</text>
 
-  <rect x="32" y="300" width="142" height="80" class="flink-inner" rx="5"/>
-  <text x="103" y="321" class="box-title" text-anchor="middle" style="fill: #7d3c98;">TaskManager</text>
-  <text x="103" y="340" class="resp" text-anchor="middle">execute operators</text>
-  <text x="103" y="354" class="resp" text-anchor="middle">slots = parallelism</text>
-  <text x="103" y="372" class="cfg" text-anchor="middle" style="font-size: 8.5px;">slots · compose:numTaskSlots</text>
+  <rect x="32" y="315" width="142" height="80" class="flink-inner" rx="5"/>
+  <text x="103" y="336" class="box-title" text-anchor="middle" style="fill: #7d3c98;">TaskManager</text>
+  <text x="103" y="355" class="resp" text-anchor="middle">execute operators</text>
+  <text x="103" y="369" class="resp" text-anchor="middle">slots = parallelism</text>
+  <text x="103" y="387" class="cfg" text-anchor="middle" style="font-size: 8.5px;">slots · compose:numTaskSlots</text>
 
-  <rect x="266" y="200" width="452" height="190" class="stream-job" rx="5"/>
-  <text x="492" y="221" class="region-label" text-anchor="middle" style="font-size: 12px;">StreamingJob</text>
-  <text x="281" y="244" class="step">① consume → parse JSON → assign event-time watermarks</text>
-  <text x="281" y="265" class="step">② DATA → write to Postgres   <tspan class="retry">[sync JDBC · ↻ on transient]</tspan></text>
-  <text x="281" y="286" class="step">③ IMAGE → always to MinIO (URL: fetch + clone) → write key to Postgres</text>
-  <text x="299" y="299" class="retry">[async I/O · ↻ on transient]</text>
-  <text x="281" y="320" class="step">④ all events → key by type → tumbling window → per-type counts</text>
-  <text x="281" y="341" class="step">⑤ image sizes → bucket → tumbling window → size histogram</text>
-  <text x="281" y="362" class="step">⑥ any-stage failure → dead-letter to Kafka</text>
-  <text x="299" y="375" class="retry" style="fill: #c0392b;">[events-dlq · at-least-once]</text>
+  <rect x="266" y="215" width="452" height="190" class="stream-job" rx="5"/>
+  <text x="492" y="236" class="region-label" text-anchor="middle" style="font-size: 12px;">StreamingJob</text>
+  <text x="281" y="259" class="step">① consume → parse JSON → assign event-time watermarks</text>
+  <text x="281" y="280" class="step">② DATA → write to Postgres   <tspan class="retry">[sync JDBC · ↻ on transient]</tspan></text>
+  <text x="281" y="301" class="step">③ IMAGE → always to MinIO (URL: fetch + clone) → write key to Postgres</text>
+  <text x="299" y="314" class="retry">[async I/O · ↻ on transient]</text>
+  <text x="281" y="335" class="step">④ all events → key by type → tumbling window → per-type counts</text>
+  <text x="281" y="356" class="step">⑤ image sizes → bucket → tumbling window → size histogram</text>
+  <text x="281" y="377" class="step">⑥ any-stage failure → dead-letter to Kafka</text>
+  <text x="299" y="390" class="retry" style="fill: #c0392b;">[events-dlq · at-least-once]</text>
 
   <!-- Prometheus (observability, right of Flink) -->
-  <rect x="778" y="210" width="166" height="90" class="observ" rx="5"/>
-  <text x="861" y="234" class="box-title" text-anchor="middle">Prometheus</text>
-  <text x="861" y="256" class="resp" text-anchor="middle">scrape pipeline</text>
-  <text x="861" y="270" class="resp" text-anchor="middle">metrics</text>
-  <text x="861" y="290" class="cfg" text-anchor="middle">Port · env:PROMETHEUS_PORT</text>
+  <rect x="778" y="225" width="166" height="90" class="observ" rx="5"/>
+  <text x="861" y="249" class="box-title" text-anchor="middle">Prometheus</text>
+  <text x="861" y="271" class="resp" text-anchor="middle">scrape pipeline</text>
+  <text x="861" y="285" class="resp" text-anchor="middle">metrics</text>
+  <text x="861" y="305" class="cfg" text-anchor="middle">Port · env:PROMETHEUS_PORT</text>
 
   <!-- ===================== STORAGE / ANALYTICS ROW ===================== -->
-  <rect x="32" y="430" width="180" height="115" class="sink" rx="5"/>
-  <text x="122" y="453" class="box-title" text-anchor="middle">MinIO <tspan class="mode">[S3]</tspan></text>
-  <text x="122" y="475" class="resp" text-anchor="middle">store image objects</text>
-  <text x="122" y="490" class="resp" text-anchor="middle">(all - uploaded and URLs)</text>
-  <text x="122" y="508" class="cfg" text-anchor="middle">ports · env:MINIO_*_EXPOSED</text>
-  <text x="122" y="528" class="step" text-anchor="middle">bucket · env:MINIO_BUCKET</text>
-  <text x="122" y="540" class="step" text-anchor="middle">layout: {date}/{uuid}.ext</text>
+  <rect x="32" y="465" width="180" height="115" class="sink" rx="5"/>
+  <text x="122" y="488" class="box-title" text-anchor="middle">MinIO <tspan class="mode">[S3]</tspan></text>
+  <text x="122" y="510" class="resp" text-anchor="middle">store image objects</text>
+  <text x="122" y="525" class="resp" text-anchor="middle">(all - uploaded and URLs)</text>
+  <text x="122" y="543" class="cfg" text-anchor="middle">ports · env:MINIO_*_EXPOSED</text>
+  <text x="122" y="563" class="step" text-anchor="middle">bucket · env:MINIO_BUCKET</text>
 
-  <rect x="250" y="430" width="255" height="115" class="sink" rx="5"/>
-  <text x="377" y="451" class="box-title" text-anchor="middle">PostgreSQL</text>
-  <text x="377" y="471" class="resp" text-anchor="middle">analytics warehouse (simulation)</text>
-  <text x="377" y="486" class="resp" text-anchor="middle">processed events + windowed aggregates</text>
-  <text x="377" y="505" class="cfg" text-anchor="middle" style="font-size: 9px;">Port · env:POSTGRES_PORT · db env:POSTGRES_DB</text>
-  <text x="377" y="524" class="step" text-anchor="middle" style="font-size: 9px;">tables: processed_events</text>
-  <text x="377" y="537" class="step" text-anchor="middle" style="font-size: 8.5px;">event_type_counts_agg · image_size_buckets_agg</text>
+  <rect x="250" y="465" width="255" height="115" class="sink" rx="5"/>
+  <text x="377" y="486" class="box-title" text-anchor="middle">PostgreSQL</text>
+  <text x="377" y="506" class="resp" text-anchor="middle">analytics warehouse (simulation)</text>
+  <text x="377" y="521" class="resp" text-anchor="middle">processed events + windowed aggregates</text>
+  <text x="377" y="540" class="cfg" text-anchor="middle" style="font-size: 9px;">Port · env:POSTGRES_PORT · db env:POSTGRES_DB</text>
 
-  <rect x="560" y="435" width="150" height="110" class="observ" rx="5"/>
-  <text x="635" y="460" class="box-title" text-anchor="middle">Grafana</text>
-  <text x="635" y="483" class="resp" text-anchor="middle">dashboards &amp;</text>
-  <text x="635" y="497" class="resp" text-anchor="middle">analytics</text>
-  <text x="635" y="520" class="cfg" text-anchor="middle">Port · env:GRAFANA_PORT</text>
+  <rect x="560" y="465" width="150" height="115" class="observ" rx="5"/>
+  <text x="635" y="488" class="box-title" text-anchor="middle">Grafana</text>
+  <text x="635" y="511" class="resp" text-anchor="middle">dashboards &amp;</text>
+  <text x="635" y="525" class="resp" text-anchor="middle">analytics</text>
+  <text x="635" y="548" class="cfg" text-anchor="middle">Port · env:GRAFANA_PORT</text>
 
   <!-- ===================== ARROWS ===================== -->
   <!-- React → Spring : sync -->
@@ -126,34 +123,34 @@
   <path d="M 727 99 L 805 99" class="observe" marker-end="url(#ah)"/>
   <text x="761" y="93" class="alabel" text-anchor="middle">read</text>
   <!-- Kafka → StreamingJob : async consume -->
-  <path d="M 560 138 L 560 198" class="async" marker-end="url(#ah)"/>
+  <path d="M 560 138 L 560 213" class="async" marker-end="url(#ah)"/>
   <text x="566" y="162" class="alabel">consume stream</text>
   <!-- StreamingJob → Kafka : dead-letter (async) -->
-  <path d="M 680 200 L 658 140" class="async" marker-end="url(#ah)"/>
+  <path d="M 680 215 L 658 140" class="async" marker-end="url(#ah)"/>
   <text x="670" y="162" class="alabel" style="fill: #c0392b;">dead-letter</text>
   <!-- Spring → MinIO : file upload (sync), routed around left edge -->
-  <path d="M 270 138 L 270 158 L 12 158 L 12 488 L 30 488" class="sync" marker-end="url(#ah)"/>
+  <path d="M 270 138 L 270 158 L 12 158 L 12 523 L 30 523" class="sync" marker-end="url(#ah)"/>
   <text x="30" y="154" class="alabel">file upload (sync)</text>
   <!-- StreamingJob → MinIO : async I/O + retry -->
-  <path d="M 300 390 L 165 428" class="async" marker-end="url(#ah)"/>
-  <text x="188" y="403" class="alabel">image upload</text>
+  <path d="M 300 405 L 165 463" class="async" marker-end="url(#ah)"/>
+  <text x="188" y="430" class="alabel">image upload</text>
   <!-- StreamingJob → Postgres : sync JDBC + retry -->
-  <path d="M 470 390 L 420 428" class="sync" marker-end="url(#ah)"/>
-  <text x="465" y="405" class="alabel">rows + aggregates</text>
+  <path d="M 470 405 L 420 463" class="sync" marker-end="url(#ah)"/>
+  <text x="465" y="430" class="alabel">rows + aggregates</text>
   <!-- Prometheus → Flink : scrape (observe) -->
-  <path d="M 776 252 L 731 252" class="observe" marker-end="url(#ah)"/>
-  <text x="861" y="204" class="alabel" text-anchor="middle">scrape metrics</text>
+  <path d="M 776 267 L 731 267" class="observe" marker-end="url(#ah)"/>
+  <text x="861" y="219" class="alabel" text-anchor="middle">scrape metrics</text>
   <!-- Postgres → Grafana : query (observe) -->
-  <path d="M 505 492 L 558 492" class="observe" marker-end="url(#ah)"/>
-  <text x="531" y="486" class="alabel" text-anchor="middle">query</text>
+  <path d="M 505 527 L 558 527" class="observe" marker-end="url(#ah)"/>
+  <text x="531" y="521" class="alabel" text-anchor="middle">query</text>
   <!-- Prometheus → Grafana : query (observe) -->
-  <path d="M 861 300 L 861 470 L 712 470" class="observe" marker-end="url(#ah)"/>
-  <text x="770" y="464" class="alabel">query metrics</text>
+  <path d="M 861 315 L 861 505 L 712 505" class="observe" marker-end="url(#ah)"/>
+  <text x="770" y="499" class="alabel">query metrics</text>
   <!-- JobManager → TaskManager : control (sync) -->
-  <path d="M 103 285 L 103 298" class="sync" marker-end="url(#ah)"/>
+  <path d="M 103 300 L 103 313" class="sync" marker-end="url(#ah)"/>
   <!-- JobManager → StreamingJob : deploy/coordinate -->
-  <path d="M 174 245 L 264 245" class="sync" marker-end="url(#ah)"/>
-  <text x="219" y="240" class="alabel" text-anchor="middle">deploy</text>
+  <path d="M 174 260 L 264 260" class="sync" marker-end="url(#ah)"/>
+  <text x="219" y="255" class="alabel" text-anchor="middle">deploy</text>
 
   <!-- ===================== LEGEND ===================== -->
   <rect x="1015" y="58" width="210" height="400" class="legend-box" rx="6"/>
