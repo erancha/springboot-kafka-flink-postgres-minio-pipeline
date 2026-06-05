@@ -1,0 +1,9 @@
+apiVersion: 1
+
+# Root notification policy: every firing alert routes to the email-ops contact point.
+# Grouping by alert name collapses the two per-instance target-down alerts into one email.
+policies:
+  - orgId: 1
+    receiver: email-ops
+    group_by:
+      - alertname

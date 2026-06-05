@@ -50,3 +50,13 @@ mvn -f flink/pom.xml verify
 Also reruns all Flink unit tests.
 
 > First run pulls the `postgres:16` Docker image (~150 MB).
+
+## Alerting end-to-end check — requires the running stack
+
+```bash
+./scripts/alert-test.sh
+```
+
+Unlike the hermetic suites above, this runs against the live stack started by `start.sh`. It stops the Flink TaskManager to induce a real outage, polls Grafana's rule-state API until the `Flink target down` rule reaches `firing`, then restarts the TaskManager and waits for it to clear. Verifies the alert path — Flink reporter → Prometheus → Grafana rule evaluation — while email delivery itself is not asserted.
+
+> Takes the pipeline down for ~2 minutes, and if SMTP is configured in `.env`, firing dispatches a real alert email.

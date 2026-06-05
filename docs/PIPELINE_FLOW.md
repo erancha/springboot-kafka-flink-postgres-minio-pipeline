@@ -56,7 +56,9 @@ Throughput & performance row:
 - Reporter-native (no code): per-second and cumulative `numRecordsIn` on the `data_to_postgres` and `image_to_postgres` operators, giving the DATA-vs-IMAGE workload split as it enters the Postgres write. Permanent write failures still count here; the per-stage DLQ panel in the Health row carries the failure split. The left column stacks the consumer-lag mirror, events/sec, and the cumulative-by-type counter top-to-bottom (the latter two are the same `numRecordsIn` series as a rate and as a raw counter), so lag, throughput, and total volume for a path read down one column — rising lag while events/sec is flat means the pipeline, not the inbound rate, is the bottleneck.
 - Custom counters on the `minio-enrich-async` operator: `minio_uploads` (successful `putObject` calls) and `minio_upload_nanos` (cumulative upload duration). Average upload latency is derived in Prometheus as `rate(minio_upload_nanos) / rate(minio_uploads)`, and uploads/sec as `rate(minio_uploads)`. Only successful uploads are metered — idempotency hits and backend-uploaded passthrough images perform no `putObject` and are excluded, so the metrics reflect genuine writes.
 
-Deliberate boundaries: the backend is not Micrometer-instrumented (only Kafka/Flink are exported); per-attempt retry counts are not metered because `JdbcWriterBase` has no Flink metric group, and a retries-exhausted outcome is already visible as `dlq_records` volume for its stage. There is no Alertmanager — the dashboard is for inspection, not paging.
+Deliberate boundaries: the backend is not Micrometer-instrumented (only Kafka/Flink are exported); per-attempt retry counts are not metered because `JdbcWriterBase` has no Flink metric group, and a retries-exhausted outcome is already visible as `dlq_records` volume for its stage.
+
+Alerting: a minimal set of Grafana-managed, file-provisioned rules ([`infra/grafana/provisioning/alerting/`](../infra/grafana/provisioning/alerting/)) email on three Flink-health basics — a JobManager or TaskManager scrape target down, no job in RUNNING state, and restart-looping. Evaluation is Grafana's own engine, not a standalone Prometheus Alertmanager; the recipient and SMTP relay come from `.env`. Checkpoint-failure and consumer-lag/backpressure rules are deferred (lag flaps under `stress.sh`), and DLQ alerting stays out of scope. An end-to-end test ([`scripts/alert-test.sh`](../scripts/alert-test.sh)) verifies a real outage drives the target-down rule to firing.
 
 ## Failure handling by stage
 
@@ -144,7 +146,7 @@ The DLQ is **write-only here**. The capture path is complete (at-least-once sink
 
 - No consumer reads `events-dlq`; inspecting or draining it is a manual Kafka-UI operation.
 - No replay tooling re-injects dead-lettered records once a payload or downstream fix lands.
-- No alert fires on a non-zero `dlq_records` rate — the dashboard is for inspection, not paging (consistent with the no-Alertmanager boundary noted under [Observability](#observability)).
+- No alert fires on a non-zero `dlq_records` rate — DLQ alerting is out of scope, so the dead-letter signal is dashboard-only even though Flink-health rules do page (see [Observability](#observability)).
 
 ### Single-node deployment
 

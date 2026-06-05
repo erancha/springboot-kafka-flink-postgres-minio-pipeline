@@ -1,0 +1,14 @@
+apiVersion: 1
+
+# Single email contact point. The recipient stays out of version control: $EMAIL_TO is
+# interpolated from the Grafana process environment (set in docker-compose from .env).
+# SMTP transport itself is configured via GF_SMTP_* env, not here.
+contactPoints:
+  - orgId: 1
+    name: email-ops
+    receivers:
+      - uid: email-ops
+        type: email
+        settings:
+          addresses: $EMAIL_TO
+          singleEmail: false

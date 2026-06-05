@@ -26,7 +26,7 @@ This is an exercise project focused on the data path's failure handling, not a p
 - **Secrets management & transport security** — credentials are supplied via a gitignored `.env`, but there is no Vault / Secrets Manager integration or rotation, and inter-service traffic on the local Docker network is plaintext (no TLS).
 - **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/PIPELINE_FLOW.md#dlq-operations).
 - **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](docs/PIPELINE_FLOW.md#out-of-scope).
-- **Paging / alerting** — Grafana dashboards are for inspection only; no Alertmanager is wired to any signal.
+- **Production paging** — basic Flink-health email alerts exist (see [Observability](docs/PIPELINE_FLOW.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints, consumer lag, or the DLQ.
 
 ## Overview
 
@@ -69,7 +69,7 @@ The pipeline services and their URLs are described in the [Overview](#overview);
 | Kafka UI | inspect topics, consumer groups | http://localhost:8088 |
 | MinIO | object storage; `minio-init` creates the `images` bucket at startup | Console: http://localhost:9011 (`minio` / `minio123`) |
 | PostgreSQL | analytics warehouse simulation (processed events + aggregates) | localhost:5432 (`warehouse`, `postgres` / `postgres`) |
-| Grafana | Postgres-analytics and Flink pipeline-health dashboards | [http://localhost:3031](http://localhost:3031/dashboards) (`admin` / `admin`) |
+| Grafana | Postgres-analytics and Flink pipeline-health dashboards, plus email alert rules on Flink health | [http://localhost:3031](http://localhost:3031/dashboards) (`admin` / `admin`) |
 | Prometheus | scrapes Flink metrics for operability | http://localhost:9090 |
 
 ## Getting Started
