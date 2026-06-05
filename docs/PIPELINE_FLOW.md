@@ -58,7 +58,7 @@ Throughput & performance row:
 
 Deliberate boundaries: the backend is not Micrometer-instrumented (only Kafka/Flink are exported); per-attempt retry counts are not metered because `JdbcWriterBase` has no Flink metric group, and a retries-exhausted outcome is already visible as `dlq_records` volume for its stage.
 
-Alerting: a minimal set of Grafana-managed, file-provisioned rules ([`infra/grafana/provisioning/alerting/`](../infra/grafana/provisioning/alerting/)) email on three Flink-health basics — a JobManager or TaskManager scrape target down, no job in RUNNING state, and restart-looping. Evaluation is Grafana's own engine, not a standalone Prometheus Alertmanager; the recipient and SMTP relay come from `.env`. Checkpoint-failure and consumer-lag/backpressure rules are deferred (lag flaps under `stress.sh`), and DLQ alerting stays out of scope. An end-to-end test ([`scripts/alert-test.sh`](../scripts/alert-test.sh)) verifies a real outage drives the target-down rule to firing.
+Alerting: a minimal set of Grafana-managed, file-provisioned rules ([`infra/grafana/provisioning/alerting/`](../infra/grafana/provisioning/alerting/)) email on three Flink-health basics — a JobManager or TaskManager scrape target down, no job in RUNNING state, and restart-looping. Evaluation is Grafana's own engine, not a standalone Prometheus Alertmanager; the recipient and SMTP relay come from `.env`. Checkpoint-failure and consumer-lag/backpressure rules are deferred (lag flaps under bursty load), and DLQ alerting stays out of scope. An end-to-end test ([`scripts/alert-test.sh`](../scripts/alert-test.sh)) verifies a real outage drives the target-down rule to firing.
 
 ## Failure handling by stage
 

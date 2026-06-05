@@ -12,15 +12,11 @@ All stack operations go through scripts in `scripts/`. Scripts that take options
 their own usage via `-h`/`--help` — consult that rather than relying on flags listed here.
 
 - `start.sh` — start the stack, or rebuild/recreate only named services
-- `stop.sh` — stop the stack
-- `build.sh` — build all Docker images
-- `ps.sh` — list running containers and service URLs
-- `health.sh` — check container health
-- `logs.sh` — stream container logs
-- `sql.sh` / `sql-file.sh` — interactive psql / run a SQL file against Postgres
-- `minio-ls.sh` / `minio-cat.sh` — list / print MinIO bucket objects
+- `docker-helper.sh` — build images (`--build`), stop the stack (`--stop`), or stream logs (`--logs`)
+- `sql-helper.sh` — interactive psql, inline SQL (`-c`), or a host SQL file (`-f`) against Postgres
+- `minio-helper.sh` — list (`ls`) / print (`cat`) MinIO bucket objects
 - `test.sh` — run the test suites
-- `stress.sh` — generate concurrent load against the running backend
+- `send-event.sh` — send one DATA and/or IMAGE event and show where it landed
 
 ## Architecture & Data Flow
 

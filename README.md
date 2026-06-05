@@ -87,12 +87,10 @@ Additional commands:
 
 ```bash
 ./scripts/start.sh --help               # start options (--restart, --rebuild)
-./scripts/stop.sh --help                # stop the stack; --remove-volumes removes volumes, --prune-dangling-images also purges build artifacts
+./scripts/docker-helper.sh --help       # build images (--build), stop the stack (--stop), or stream logs (--logs)
 ./scripts/test.sh --help                # run tests; see docs/TESTING.md for suite details
-./scripts/stress.sh --help              # concurrent DATA/IMAGE-url load generator (requires --profile testing for IMAGE)
+./scripts/send-event.sh --help          # send one DATA and/or IMAGE event and show where it landed
 
-./scripts/ps.sh                         # show running containers and service URLs
-./scripts/logs.sh --help                # stream logs (supports -e/--errors and per-service filtering)
 ./scripts/compare-images.sh             # compare image counts in MinIO vs PostgreSQL
 ```
 

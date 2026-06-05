@@ -26,7 +26,7 @@ Take the per-type count ([`StreamingJob.buildEventTypeCounts`](../flink/src/main
 Via CLI:
 
 ```bash
-./scripts/sql-file.sh infra/postgres/analytics.sql
+./scripts/sql-helper.sh -f infra/postgres/analytics.sql
 ```
 
 Via Grafana dashboard:
