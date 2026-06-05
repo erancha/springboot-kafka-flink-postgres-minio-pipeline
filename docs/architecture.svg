@@ -36,30 +36,31 @@
 
   <!-- ===================== INGESTION ROW ===================== -->
   <rect x="25" y="60" width="130" height="78" class="ingestion" rx="5"/>
-  <text x="90" y="82" class="box-title" text-anchor="middle">React UI</text>
-  <text x="90" y="103" class="resp" text-anchor="middle">submit IMAGE / DATA</text>
-  <text x="90" y="126" class="cfg" text-anchor="middle">Port · env:UI_PORT</text>
+  <text x="90" y="82" class="box-title" text-anchor="middle">Frontend <tspan style="font-size: 9.5px;">(React)</tspan></text>
+  <text x="90" y="100" class="resp" text-anchor="middle">minimal tester</text>
+  <text x="90" y="114" class="resp" text-anchor="middle">submit IMAGE / DATA</text>
+  <text x="90" y="128" class="cfg" text-anchor="middle">Port · env:UI_PORT</text>
 
   <rect x="246" y="60" width="185" height="78" class="ingestion" rx="5"/>
-  <text x="339" y="82" class="box-title" text-anchor="middle">Spring Boot API</text>
-  <text x="339" y="101" class="resp" text-anchor="middle">validate · publish event JSON</text>
-  <text x="339" y="115" class="resp" text-anchor="middle">upload file bytes → MinIO</text>
+  <text x="339" y="82" class="box-title" text-anchor="middle">Backend <tspan style="font-size: 9.5px;">(Java Spring Boot)</tspan></text>
+  <text x="339" y="101" class="resp" text-anchor="middle">validate · publish events</text>
+  <text x="339" y="115" class="resp" text-anchor="middle">upload files → MinIO</text>
   <text x="339" y="131" class="cfg" text-anchor="middle">Port · env:BACKEND_PORT</text>
 
   <rect x="522" y="60" width="205" height="78" class="broker" rx="5"/>
-  <text x="620" y="81" class="box-title" text-anchor="middle">Apache Kafka <tspan class="mode">[KRaft]</tspan></text>
+  <text x="620" y="81" class="box-title" text-anchor="middle">Kafka <tspan style="font-size: 9.5px;">[KRaft]</tspan></text>
   <text x="620" y="100" class="resp" text-anchor="middle">durable event backbone</text>
   <text x="620" y="116" class="cfg" text-anchor="middle">Port · env:KAFKA_PORT</text>
   <text x="625" y="130" class="cfg" text-anchor="middle" style="font-size: 8.5px;">topics · env:KAFKA_TOPIC + KAFKA_DLQ_TOPIC</text>
 
   <rect x="808" y="60" width="142" height="78" class="observ" rx="5"/>
   <text x="879" y="82" class="box-title" text-anchor="middle">Kafka UI</text>
-  <text x="879" y="103" class="resp" text-anchor="middle">inspect topics</text>
+  <text x="879" y="103" class="resp" text-anchor="middle">topics, consumer groups</text>
   <text x="879" y="126" class="cfg" text-anchor="middle">Port · env:KAFKA_UI_PORT</text>
 
   <!-- ===================== FLINK ROW ===================== -->
   <rect x="20" y="170" width="710" height="240" class="flink-region" rx="10"/>
-  <text x="375" y="190" class="region-label" text-anchor="middle">Flink Cluster <tspan class="mode">[checkpointed · event-time + watermarks]</tspan></text>
+  <text x="375" y="190" class="region-label" text-anchor="middle" style="font-size: 14px;">Flink Cluster <tspan class="mode">[checkpointed · event-time + watermarks]</tspan></text>
 
   <rect x="32" y="205" width="142" height="80" class="flink-inner" rx="5"/>
   <text x="103" y="226" class="box-title" text-anchor="middle" style="fill: #7d3c98;">JobManager</text>
