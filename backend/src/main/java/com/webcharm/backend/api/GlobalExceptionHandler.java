@@ -53,20 +53,18 @@ public class GlobalExceptionHandler {
     return respond(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), ex);
   }
 
-  // Log level is chosen from the HTTP status range (4xx vs 5xx), not the exception type, so any
-  // handler added later inherits the policy by passing its status:
-  // - 4xx (client/attacker-driven input, including SSRF denials): DEBUG. The caller controls the
-  //   rate, so logging every one at WARN is a flooding vector; available when investigating,
-  //   silent under load.
-  // - 5xx (dependency or IO failure): WARN. Signals a backing service is actually failing and
-  //   must stay visible in production.
+  // Status range (4xx vs 5xx) drives both log level and response body, so handlers inherit the
+  // policy by passing their status. 4xx is caller-driven, so it logs at DEBUG (WARN would let an
+  // attacker flood the log) and returns its client-actionable message. 5xx means a backing service
+  // is failing, so it logs the detail at WARN but returns only the reason phrase — internal failure
+  // detail must not be echoed to the caller.
   private ResponseEntity<String> respond(HttpStatus status, String body, Throwable ex) {
-    String detail = ex.getMessage();
+    String internalMessage = ex.getMessage();
     if (status.is4xxClientError()) {
-      log.debug("{} -> {}: {}", ex.getClass().getSimpleName(), status.value(), detail);
-    } else {
-      log.warn("{} -> {}: {}", ex.getClass().getSimpleName(), status.value(), detail);
+      log.debug("{} -> {}: {}", ex.getClass().getSimpleName(), status.value(), internalMessage);
+      return ResponseEntity.status(status).body(body);
     }
-    return ResponseEntity.status(status).body(body);
+    log.warn("{} -> {}: {}", ex.getClass().getSimpleName(), status.value(), internalMessage);
+    return ResponseEntity.status(status).body(status.getReasonPhrase());
   }
 }

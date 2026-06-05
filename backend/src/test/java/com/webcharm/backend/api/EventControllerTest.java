@@ -23,6 +23,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -188,6 +191,29 @@ class EventControllerTest {
 
         mvc.perform(multipart("/api/events/image-upload").file(file))
             .andExpect(status().isInternalServerError());
+    }
+
+    @Test
+    void publishImageUpload_ioError_responseBodyDoesNotLeakExceptionDetail() throws Exception {
+        when(imageUploadService.upload(any(), any(), any()))
+            .thenThrow(new IOException("disk read failed at /var/lib/secret"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "broken.jpg", "image/jpeg", new byte[]{1});
+
+        mvc.perform(multipart("/api/events/image-upload").file(file))
+            .andExpect(status().isInternalServerError())
+            .andExpect(content().string(not(containsString("disk read failed"))))
+            .andExpect(content().string("Internal Server Error"));
+    }
+
+    @Test
+    void publishEvent_blockedHost_responseBodyKeepsClientActionableDetail() throws Exception {
+        mvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"https://blocked.com/photo.jpg\"}"))
+            .andExpect(status().isForbidden())
+            .andExpect(content().string(containsString("imageUrl host not in allowlist")));
     }
 
     @Test
