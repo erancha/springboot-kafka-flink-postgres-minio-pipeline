@@ -47,6 +47,7 @@ if ! [[ "$ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
   echo "iterations must be a positive integer (got: '$ITERATIONS')" >&2
   exit 1
 fi
+TYPE="${TYPE,,}"  # accept any case; all downstream comparisons use the lowercase form
 case "$TYPE" in
   data|image|both) ;;
   *) echo "type must be one of: data image both (got: '$TYPE')" >&2; exit 1 ;;
@@ -86,9 +87,13 @@ print_banner() {
 }
 
 # Builds a DATA event JSON body. Args: worker-id, iteration, epoch-seconds.
+# Payload is an order record per event-payload-schema.json (orderNumber + quantity,
+# no extra properties); worker/iteration/timestamp are encoded into orderNumber to
+# keep every request unique and traceable.
 data_body() {
-  printf '{"eventType":"DATA","payload":{"thread":%d,"iter":%d,"ts":%d}}' \
-    "$1" "$2" "$3"
+  local qty=$(( $2 % 1000 + 1 ))
+  printf '{"eventType":"DATA","payload":{"orderNumber":"ORD-%d-%d-%d","quantity":%d}}' \
+    "$1" "$2" "$3" "$qty"
 }
 
 # POSTs $1 as JSON to EVENTS_URL, writing the response body to file $2

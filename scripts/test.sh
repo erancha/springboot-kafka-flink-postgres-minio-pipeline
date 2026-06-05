@@ -5,7 +5,7 @@
 #   backend   – Spring Boot unit tests (no Docker)
 #   flink     – Flink unit tests (no Docker)
 #   flink-it  – Flink unit + Testcontainers integration tests (requires Docker)
-#   frontend  – Vitest frontend tests (no Docker)
+#   frontend  – Vitest frontend unit tests (no Docker)
 # Examples:
 #   ./scripts/test.sh                    # run all suites
 #   ./scripts/test.sh backend frontend   # run only backend and frontend
