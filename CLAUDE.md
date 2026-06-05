@@ -17,6 +17,7 @@ their own usage via `-h`/`--help` — consult that rather than relying on flags 
 - `minio-helper.sh` — list (`ls`) / print (`cat`) MinIO bucket objects
 - `test.sh` — run the test suites
 - `send-event.sh` — send one DATA and/or IMAGE event and show where it landed
+- `jmeter-helper.sh` — load-test backend ingestion with JMeter (`--threads`, `--iterations`)
 
 ## Architecture & Data Flow
 
