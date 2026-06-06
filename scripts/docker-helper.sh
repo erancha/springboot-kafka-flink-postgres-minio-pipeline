@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
 # Docker Compose helper for the local stack. One entry point for the thin compose ops.
 # Usage: docker-helper.sh <command> [args]
-#   --build
-#       Build all stack images.
+#   --build [service...]
+#       Build all stack images, or only the named services.
 #   --stop [--keep-volumes] [--prune-dangling-images]
 #       Stop the stack. Default removes volumes; --keep-volumes preserves data.
 #       --prune-dangling-images also purges dangling images/volumes (ignored with --keep-volumes).
-#   --logs [-e|--errors|-w|--warnings] [--grep <pat>] [--since <dur>] [--sort time [--order asc|desc]] [service]
+#   --logs [-e|--errors|-w|--warnings] [--grep <pat>] [--since <dur>] [--sort time [--order asc|desc]] [service...]
 #       Follow logs live (last 200 lines). -e filters to ERROR/EXCEPTION/FATAL; -w widens that to
 #       also include WARN; --grep <pat> filters to a case-insensitive regex; --since limits to
 #       recent logs (e.g. 10m, 1h, or an absolute time); --sort time takes a finite snapshot
 #       ordered chronologically and exits (--order desc=newest first, default; asc=oldest first);
-#       service narrows to one service.
+#       a trailing service list narrows to those services.
 #   -h, --help
+#
+# Scope to specific services by naming them last (narrows --build and --logs; --stop is whole-stack):
+#   scripts/docker-helper.sh --build backend ui      # include: build just these two
+#   scripts/docker-helper.sh --logs -e flink-job     # include: follow errors from one service
+# To skip a service, list the others. Combine with -e/-w to filter by severity too — 
+# e.g. all warnings except Grafana, whose auth logs otherwise dominate -w:
+#   scripts/docker-helper.sh --logs -w $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
+#   scripts/docker-helper.sh --logs -w --since 1h $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,18 +28,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
   [[ -z "${1:-}" ]] && exit 1
   exit 0
 fi
 
-# Builds all images. The frontend build context excludes ../backend, so the payload
-# schema is staged into frontend/public where the frontend image can reach it.
+# Builds the stack images, or only the services named in "$@". The frontend build context
+# excludes ../backend, so the payload schema is staged into frontend/public where the frontend
+# image can reach it.
 do_build() {
   mkdir -p "$ROOT_DIR/frontend/public"
   cp "$ROOT_DIR/backend/src/main/resources/event-payload-schema.json" \
      "$ROOT_DIR/frontend/public/event-payload-schema.json"
-  compose build
+  compose build "$@"
 }
 
 do_stop() {
