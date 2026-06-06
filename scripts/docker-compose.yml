@@ -7,6 +7,15 @@ x-postgres-connection: &postgres-connection
   <<: *postgres-credentials
   POSTGRES_URL: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
 
+# JobManager, TaskManager, and the job submitter all run one locally-built image: stock
+# apache/flink:2.2-java21 plus the streaming-job jar, with the JRE-absent jdk.compiler exports
+# stripped from the default JVM opts (see flink/Dockerfile). Shared so the strip and the runtime
+# stay identical across the three, and the image builds once.
+x-flink-image: &flink-image
+  build:
+    context: ./flink
+  image: pipeline-flink:local
+
 services:
   # Kafka broker/controller (KRaft) used as the event streaming backbone for the assignment.
   kafka:
@@ -155,7 +164,7 @@ services:
       - IMAGE_URL_ALLOWED_HOSTS=${IMAGE_URL_ALLOWED_HOSTS}
       - MAX_REQUEST_CONTENT_LENGTH=${MAX_REQUEST_CONTENT_LENGTH}
       - EVENT_PAYLOAD_SCHEMA=${EVENT_PAYLOAD_SCHEMA}
-      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_LEVEL=${LOG_LEVEL:-}
     ports:
       - "${BACKEND_PORT}:8080"
     depends_on:
@@ -164,7 +173,7 @@ services:
 
   # Flink JobManager providing the stream processing control plane for the assignment.
   flink-jobmanager:
-    image: apache/flink:2.2-java21
+    <<: *flink-image
     command: jobmanager
     # ports: ["8081:8081"]  # Flink UI — uncomment to expose locally
     volumes:
@@ -191,7 +200,7 @@ services:
 
   # Flink TaskManager providing execution slots/workers for the streaming job.
   flink-taskmanager:
-    image: apache/flink:2.2-java21
+    <<: *flink-image
     command: taskmanager
     volumes:
       - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
@@ -209,8 +218,7 @@ services:
 
   # Flink job submitter for the Kafka->(MinIO/Postgres) pipeline; unlike minio-init it is not expected to exit immediately, and an early exit means job submission/startup failed.
   flink-job:
-    build:
-      context: ./flink
+    <<: *flink-image
     environment:
       <<: *postgres-connection
       ROOT_LOG_LEVEL: WARN

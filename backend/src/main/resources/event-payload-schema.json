@@ -22,7 +22,7 @@
       "maxLength": 64
     }
   },
-  "sample": [
+  "examples": [
     {
       "orderNumber": "ORD-1001",
       "quantity": 3,

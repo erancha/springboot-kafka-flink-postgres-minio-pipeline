@@ -30,8 +30,8 @@ export default function App() {
         if (cancelled) return;
         const keys = Object.keys(schema.properties ?? {});
         if (keys.length) setAllowedKeys(keys);
-        const sample = Array.isArray(schema.sample) ? schema.sample[0] : undefined;
-        if (sample) setJsonText(JSON.stringify(sample, null, 2));
+        const example = Array.isArray(schema.examples) ? schema.examples[0] : undefined;
+        if (example) setJsonText(JSON.stringify(example, null, 2));
       } catch {
         // Keep the built-in fallback default when the schema asset is unavailable.
       }

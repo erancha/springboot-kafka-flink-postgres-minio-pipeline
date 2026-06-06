@@ -62,7 +62,7 @@ describe('DATA payload schema (loaded from /event-payload-schema.json)', () => {
           ok: true,
           json: () => Promise.resolve({
             properties: { alpha: { type: 'string' }, beta: { type: 'integer' } },
-            sample: [{ alpha: 'x', beta: 7 }],
+            examples: [{ alpha: 'x', beta: 7 }],
           }),
         });
       }

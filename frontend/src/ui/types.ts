@@ -9,10 +9,10 @@ export interface EventRequest {
 }
 
 // The subset of the JSON Schema served at /event-payload-schema.json that the UI consumes:
-// property names drive the "allowed keys" hint; sample[0] seeds the payload editor.
+// property names drive the "allowed keys" hint; examples[0] seeds the payload editor.
 export interface PayloadSchema {
   properties?: Record<string, unknown>;
-  sample?: unknown[];
+  examples?: unknown[];
 }
 
 export type BannerVariant = 'uploading' | 'success' | 'error';
