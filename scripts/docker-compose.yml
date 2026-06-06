@@ -58,6 +58,17 @@ services:
       kafka:
         condition: service_healthy
 
+  # Reads committed consumer-group offsets straight from Kafka and exposes lag as
+  # kafka_consumergroup_lag for Prometheus. This is the authoritative "are we keeping up"
+  # signal (latest - committed offset, matching Kafka UI), independent of Flink's health —
+  # unlike Flink's pendingRecords, which reports only while the source task is RUNNING.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    command: ["--kafka.server=${KAFKA_HOST}:${KAFKA_PORT}"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+
   # Kafka bootstrap job to create the events and DLQ topics before producers/consumers begin exchanging events.
   kafka-init:
     image: apache/kafka:3.7.1
