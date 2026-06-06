@@ -21,8 +21,9 @@ groups:
         execErrState: Error
         labels:
           severity: critical
+          host_machine: $MACHINE_NAME
         annotations:
-          summary: Flink scrape target {{ $labels.instance }} is unreachable
+          summary: '{{ $labels.host_machine }} — Flink scrape target {{ $labels.instance }} is unreachable'
         data:
           - refId: A
             relativeTimeRange:
@@ -59,8 +60,9 @@ groups:
         execErrState: Error
         labels:
           severity: critical
+          host_machine: $MACHINE_NAME
         annotations:
-          summary: No Flink job in RUNNING state
+          summary: '{{ $labels.host_machine }} — No Flink job in RUNNING state'
         data:
           - refId: A
             relativeTimeRange:
@@ -97,8 +99,9 @@ groups:
         execErrState: Error
         labels:
           severity: warning
+          host_machine: $MACHINE_NAME
         annotations:
-          summary: Flink job restarting ~{{ printf "%.0f" $values.A.Value }} times / 10m
+          summary: '{{ $labels.host_machine }} — Flink job restarting ~{{ printf "%.0f" $values.A.Value }} times / 10m'
         data:
           - refId: A
             relativeTimeRange:

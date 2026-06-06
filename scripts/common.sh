@@ -10,6 +10,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose() {
   local -a files=(-f "$ROOT_DIR/scripts/docker-compose.yml")
   [[ -n "${COMPOSE_OVERRIDE:-}" ]] && files+=(-f "$COMPOSE_OVERRIDE")
+  # Names the host in Flink alerts; bash's $HOSTNAME is not exported to compose.
+  export MACHINE_NAME="${MACHINE_NAME:-$(hostname)}"
   (cd "$ROOT_DIR" && docker compose --project-directory "$ROOT_DIR" "${files[@]}" "$@")
 }
 

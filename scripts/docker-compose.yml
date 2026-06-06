@@ -25,6 +25,8 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - ./infra/kafka/log4j.properties:/mnt/shared/config/log4j.properties:ro
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:${KAFKA_PORT} --list 1>/dev/null"]
       interval: 10s
@@ -39,6 +41,10 @@ services:
     environment:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=${KAFKA_HOST}:${KAFKA_PORT}
+      - LOGGING_LEVEL_ROOT=WARN
+      # The image ships logging.level.com.provectus=DEBUG, which outranks root and emits a
+      # per-poll "Metrics updated" line every 30s; pin its own packages to WARN to silence it.
+      - LOGGING_LEVEL_COM_PROVECTUS=WARN
     depends_on:
       kafka:
         condition: service_healthy
@@ -83,6 +89,8 @@ services:
       - GF_SMTP_PASSWORD=${SMTP_PASS}
       - GF_SMTP_FROM_ADDRESS=${SMTP_USER}
       - EMAIL_TO=${EMAIL_TO}
+      # Names the staging host in Flink alerts; injected by scripts/common.sh compose().
+      - MACHINE_NAME=${MACHINE_NAME:-unknown}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -159,7 +167,10 @@ services:
     image: apache/flink:2.2-java21
     command: jobmanager
     # ports: ["8081:8081"]  # Flink UI — uncomment to expose locally
+    volumes:
+      - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
     environment:
+      - ROOT_LOG_LEVEL=WARN
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
@@ -182,7 +193,10 @@ services:
   flink-taskmanager:
     image: apache/flink:2.2-java21
     command: taskmanager
+    volumes:
+      - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
     environment:
+      - ROOT_LOG_LEVEL=WARN
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
@@ -199,6 +213,7 @@ services:
       context: ./flink
     environment:
       <<: *postgres-connection
+      ROOT_LOG_LEVEL: WARN
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_HOST}:${KAFKA_PORT}
