@@ -35,13 +35,9 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then
   exit 0
 fi
 
-# Builds the stack images, or only the services named in "$@". The frontend build context
-# excludes ../backend, so the payload schema is staged into frontend/public where the frontend
-# image can reach it.
+# Builds the stack images, or only the services named in "$@".
 do_build() {
-  mkdir -p "$ROOT_DIR/frontend/public"
-  cp "$ROOT_DIR/backend/src/main/resources/event-payload-schema.json" \
-     "$ROOT_DIR/frontend/public/event-payload-schema.json"
+  stage_payload_schema
   compose build "$@"
 }
 

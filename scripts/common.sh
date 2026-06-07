@@ -15,6 +15,15 @@ compose() {
   (cd "$ROOT_DIR" && docker compose --project-directory "$ROOT_DIR" "${files[@]}" "$@")
 }
 
+# The frontend build context excludes ../backend, so the frontend image cannot reach the schema at
+# its source. Stage it into frontend/public (Vite bundles public/* into the served root) before any
+# frontend build, or the UI's example pre-fill fetches 404 and the empty {} default is submitted.
+stage_payload_schema() {
+  mkdir -p "$ROOT_DIR/frontend/public"
+  cp "$ROOT_DIR/backend/src/main/resources/event-payload-schema.json" \
+     "$ROOT_DIR/frontend/public/event-payload-schema.json"
+}
+
 require_docker() {
   command -v docker >/dev/null 2>&1 || {
     echo "docker not found" >&2

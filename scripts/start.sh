@@ -32,11 +32,7 @@ start_services() {
 
   for svc in "$@"; do
     case "$svc" in
-      ui)
-        mkdir -p "$ROOT_DIR/frontend/public"
-        cp "$ROOT_DIR/backend/src/main/resources/event-payload-schema.json" \
-           "$ROOT_DIR/frontend/public/event-payload-schema.json"
-        ;;
+      ui) stage_payload_schema ;;
       flink-job) recycle_cluster=true ;;
     esac
   done
@@ -85,6 +81,9 @@ fi
 if $RESTART; then
   compose down
 fi
+
+# Plain `up -d` still builds images absent on first run, so stage the schema for both paths.
+stage_payload_schema
 
 if $REBUILD; then
   compose up -d --build
