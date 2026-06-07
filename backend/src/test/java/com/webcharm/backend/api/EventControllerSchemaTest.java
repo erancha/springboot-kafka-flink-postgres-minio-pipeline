@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Verifies DATA payloads are validated against the shipped schema (event-payload-schema.json,
- * the .env.example default), an order record requiring orderNumber and quantity: a conforming
+ * the .env.example default), an order record requiring orderNumber, quantity, and sku: a conforming
  * payload publishes, while unknown keys, missing required keys, and wrong types are rejected with
  * 400 and never reach Kafka.
  */
@@ -39,7 +39,7 @@ class EventControllerSchemaTest {
     void conformingPayload_returns200AndPublishes() throws Exception {
         mvc.perform(post("/api/events")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"eventType\":\"DATA\",\"payload\":{\"orderNumber\":\"ORD-1001\",\"quantity\":3}}"))
+                .content("{\"eventType\":\"DATA\",\"payload\":{\"orderNumber\":\"ORD-1001\",\"quantity\":3,\"sku\":\"SKU-42\"}}"))
             .andExpect(status().isOk());
 
         verify(eventProducer).send(any());

@@ -48,10 +48,10 @@ BODY_FILE="$(mktemp)"
 trap 'rm -f "$BODY_FILE"' EXIT
 
 # Builds a unique DATA body conforming to event-payload-schema.json (orderNumber +
-# quantity, no extra properties). Epoch seconds and $RANDOM keep each send distinct.
+# quantity + sku, no extra properties). Epoch seconds and $RANDOM keep each send distinct.
 data_body() {
-  printf '{"eventType":"DATA","payload":{"orderNumber":"ORD-%s-%s","quantity":%d}}' \
-    "$(date +%s)" "$RANDOM" "$(( RANDOM % 1000 + 1 ))"
+  printf '{"eventType":"DATA","payload":{"orderNumber":"ORD-%s-%s","quantity":%d,"sku":"SKU-%s"}}' \
+    "$(date +%s)" "$RANDOM" "$(( RANDOM % 1000 + 1 ))" "$RANDOM"
 }
 
 # POSTs $1 as JSON to EVENTS_URL, response body to BODY_FILE. Echoes the HTTP

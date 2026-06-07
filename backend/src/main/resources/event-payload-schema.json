@@ -5,10 +5,15 @@
   "additionalProperties": false,
   "required": [
     "orderNumber",
-    "quantity"
+    "quantity",
+    "sku"
   ],
   "properties": {
     "orderNumber": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "sku": {
       "type": "string",
       "maxLength": 64
     },
@@ -17,7 +22,7 @@
       "minimum": 1,
       "maximum": 1000000
     },
-    "sku": {
+    "customerId": {
       "type": "string",
       "maxLength": 64
     }
