@@ -30,9 +30,8 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <!-- orderNumber is made unique per request from time + thread index + a per-thread
-                     counter; quantity stays within the schema's 1..1000000 bound. -->
-                <stringProp name="Argument.value">{"eventType":"DATA","payload":{"orderNumber":"ORD-${__time()}-${__threadNum}-${__counter(TRUE,)}","quantity":${__Random(1,1000)}}}</stringProp>
+                <!-- orderNumber is ORD-<threadNum>; quantity stays within the schema's 1..1000000 bound. -->
+                <stringProp name="Argument.value">{"eventType":"DATA","payload":{"orderNumber":"ORD-${__threadNum}","quantity":${__Random(1,1000)}}}</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>
