@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.config.EnvConfig;
+import com.webcharm.pipeline.functions.CountAggregateFunction;
 import com.webcharm.pipeline.functions.DlqMeterFunction;
 import com.webcharm.pipeline.functions.EnrichSplitFunction;
 import com.webcharm.pipeline.functions.MinioAsyncImageFunction;
@@ -51,7 +52,6 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
-import java.util.stream.StreamSupport;
 
 /**
  * Defines and submits the streaming topology. Parses Kafka events, stamps event-time
@@ -172,26 +172,22 @@ public class StreamingJob {
    */
   static DataStream<EventTypeCountAgg> buildEventTypeCounts(DataStream<ProcessedEvent> withWatermarks) {
     return withWatermarks
-        // The count needs only the type; nulling the payload fields here keeps the per-window
-        // buffer — held in managed state and snapshotted into every checkpoint — small.
-        .map(e -> new ProcessedEvent(
-            e.getId(), e.getEventType(), e.getEventTime(), e.getSource(),
-            null, null, null, e.getDate()))
-        .name("strip-for-window")
         .keyBy(ProcessedEvent::getEventType)
         .window(TumblingEventTimeWindows.of(EVENT_TYPE_COUNT_WINDOW))
-        .process(new ProcessWindowFunction<ProcessedEvent, EventTypeCountAgg, String, TimeWindow>() {
-          @Override
-          public void process(String key, Context context, Iterable<ProcessedEvent> elements,
-              Collector<EventTypeCountAgg> out) {
-            long count = StreamSupport.stream(elements.spliterator(), false).count();
-            out.collect(new EventTypeCountAgg(
-                Instant.ofEpochMilli(context.window().getStart()),
-                Instant.ofEpochMilli(context.window().getEnd()),
-                key,
-                count));
-          }
-        })
+        // Count events per type over each window.
+        .aggregate(
+            new CountAggregateFunction<ProcessedEvent>(),
+            new ProcessWindowFunction<Long, EventTypeCountAgg, String, TimeWindow>() {
+              @Override
+              public void process(String key, Context context, Iterable<Long> counts,
+                  Collector<EventTypeCountAgg> out) {
+                out.collect(new EventTypeCountAgg(
+                    Instant.ofEpochMilli(context.window().getStart()),
+                    Instant.ofEpochMilli(context.window().getEnd()),
+                    key,
+                    counts.iterator().next()));
+              }
+            })
         .name("count-by-type-agg");
   }
 
@@ -206,18 +202,20 @@ public class StreamingJob {
         // needed because a lambda's return type is not inferable.
         .keyBy(bucket -> bucket.label(), TypeInformation.of(String.class))
         .window(TumblingEventTimeWindows.of(IMAGE_SIZE_BUCKET_COUNT_WINDOW))
-        .process(new ProcessWindowFunction<ImageSizeBucket, ImageSizeBucketCountAgg, String, TimeWindow>() {
-          @Override
-          public void process(String bucketLabel, Context context, Iterable<ImageSizeBucket> elements,
-              Collector<ImageSizeBucketCountAgg> out) {
-            long count = StreamSupport.stream(elements.spliterator(), false).count();
-            out.collect(new ImageSizeBucketCountAgg(
-                Instant.ofEpochMilli(context.window().getStart()),
-                Instant.ofEpochMilli(context.window().getEnd()),
-                bucketLabel,
-                count));
-          }
-        })
+        // Count stored images per size bucket over each window.
+        .aggregate(
+            new CountAggregateFunction<ImageSizeBucket>(),
+            new ProcessWindowFunction<Long, ImageSizeBucketCountAgg, String, TimeWindow>() {
+              @Override
+              public void process(String bucketLabel, Context context, Iterable<Long> counts,
+                  Collector<ImageSizeBucketCountAgg> out) {
+                out.collect(new ImageSizeBucketCountAgg(
+                    Instant.ofEpochMilli(context.window().getStart()),
+                    Instant.ofEpochMilli(context.window().getEnd()),
+                    bucketLabel,
+                    counts.iterator().next()));
+              }
+            })
         .name("image-size-buckets-agg");
   }
 
