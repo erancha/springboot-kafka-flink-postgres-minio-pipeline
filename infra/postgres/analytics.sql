@@ -12,11 +12,11 @@ FROM processed_events
 GROUP BY event_type
 ORDER BY COUNT(*) DESC;
 
-\echo '== [processed_events] Post-hoc: Retrieve latest processed records (computed at query time) =='
-SELECT id, event_type, event_time, source, image_object_key, inserted_at
-FROM processed_events
-ORDER BY inserted_at DESC
-LIMIT 20;
+-- \echo '== [processed_events] Post-hoc: Retrieve latest processed records (computed at query time) =='
+-- SELECT id, event_type, event_time, source, image_object_key, inserted_at
+-- FROM processed_events
+-- ORDER BY inserted_at DESC
+-- LIMIT 20;
 
 \echo '== [processed_events] Post-hoc: Aggregate events by hour (computed at query time) =='
 SELECT date_trunc('hour', event_time) AS hour, event_type, COUNT(*)
@@ -29,7 +29,21 @@ SELECT window_start, window_end, event_type, event_count
 FROM event_type_counts_agg
 ORDER BY window_start DESC, event_type;
 
+\echo '== [event_type_counts_agg] Total across all windows (NULL event_type = grand total) =='
+-- Summing the windowed counts should match the post-hoc count above, modulo any window
+-- still open (event-time watermark not yet past its end).
+SELECT event_type, SUM(event_count) AS total_count
+FROM event_type_counts_agg
+GROUP BY ROLLUP(event_type)
+ORDER BY event_type NULLS LAST;
+
 \echo '== [image_size_buckets_agg] Real-time: 10-minute stored-image count per size bucket (pre-aggregated by Flink) =='
 SELECT window_start, window_end, bucket, image_count
 FROM image_size_buckets_agg
 ORDER BY window_start DESC, bucket;
+
+\echo '== [image_size_buckets_agg] Total across all windows (NULL bucket = grand total) =='
+SELECT bucket, SUM(image_count) AS total_count
+FROM image_size_buckets_agg
+GROUP BY ROLLUP(bucket)
+ORDER BY bucket NULLS LAST;
