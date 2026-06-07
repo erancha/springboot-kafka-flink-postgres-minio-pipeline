@@ -20,6 +20,13 @@ services:
   # Kafka broker/controller (KRaft) used as the event streaming backbone for the assignment.
   kafka:
     image: apache/kafka:3.7.1
+    # Memory caps below are sized for the 8GB WSL2 VM (see ~/.wslconfig): each limit sits above the
+    # service runtime's default heap so it bounds runaways without triggering OOM kills. As caps
+    # (not reservations) their sum may exceed 8GB; real concurrent usage stays well under it.
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
     ports:
       - "${KAFKA_PORT}:9092"
     environment:
@@ -45,6 +52,10 @@ services:
   # Kafka UI for inspecting topics/messages locally during development and demos.
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
+    deploy:
+      resources:
+        limits:
+          memory: 768m
     ports:
       - "${KAFKA_UI_PORT}:8080"
     environment:
@@ -64,6 +75,10 @@ services:
   # unlike Flink's pendingRecords, which reports only while the source task is RUNNING.
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.7.0
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     command: ["--kafka.server=${KAFKA_HOST}:${KAFKA_PORT}"]
     depends_on:
       kafka:
@@ -82,6 +97,10 @@ services:
   # PostgreSQL simulating a data-warehouse-like analytics database for processed DATA/IMAGE events.
   postgres:
     image: postgres:16
+    deploy:
+      resources:
+        limits:
+          memory: 768m
     environment:
       <<: *postgres-credentials
     ports:
@@ -97,6 +116,10 @@ services:
 
   grafana:
     image: grafana/grafana-oss:11.0.0
+    deploy:
+      resources:
+        limits:
+          memory: 384m
     ports:
       - "${GRAFANA_PORT}:3000"
     environment:
@@ -123,6 +146,10 @@ services:
   # enrichment failures) is queryable; Grafana reads it via the Prometheus datasource.
   prometheus:
     image: prom/prometheus:v2.54.1
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     ports:
       - "${PROMETHEUS_PORT}:9090"
     volumes:
@@ -134,6 +161,10 @@ services:
   # MinIO provides local S3-compatible object storage for IMAGE event outputs.
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
@@ -161,6 +192,10 @@ services:
   backend:
     build:
       context: ./backend
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
     environment:
       - SERVER_PORT=8080
       - KAFKA_HOST_LOCAL=${KAFKA_HOST}
@@ -186,6 +221,10 @@ services:
   flink-jobmanager:
     <<: *flink-image
     command: jobmanager
+    deploy:
+      resources:
+        limits:
+          memory: 1792m
     # ports: ["8081:8081"]  # Flink UI — uncomment to expose locally
     volumes:
       - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
@@ -213,6 +252,10 @@ services:
   flink-taskmanager:
     <<: *flink-image
     command: taskmanager
+    deploy:
+      resources:
+        limits:
+          memory: 2048m
     volumes:
       - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
     environment:
@@ -230,6 +273,10 @@ services:
   # Flink job submitter for the Kafka->(MinIO/Postgres) pipeline; unlike minio-init it is not expected to exit immediately, and an early exit means job submission/startup failed.
   flink-job:
     <<: *flink-image
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     environment:
       <<: *postgres-connection
       ROOT_LOG_LEVEL: WARN
@@ -257,6 +304,10 @@ services:
   ui:
     build:
       context: ./frontend
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     ports:
       - "${UI_PORT}:80"
     environment:
