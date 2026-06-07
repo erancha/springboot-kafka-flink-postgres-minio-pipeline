@@ -12,6 +12,8 @@
 #       recent logs (e.g. 10m, 1h, or an absolute time); --sort time takes a finite snapshot
 #       ordered chronologically and exits (--order desc=newest first, default; asc=oldest first);
 #       a trailing service list narrows to those services.
+#   --kafka-disk
+#       Show on-disk size of Kafka's log dir: total plus a per-topic breakdown (partitions summed).
 #   -h, --help
 #
 # Scope to specific services by naming them last (narrows --build and --logs; --stop is whole-stack):
@@ -28,7 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then
-  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
   [[ -z "${1:-}" ]] && exit 1
   exit 0
 fi
@@ -108,13 +110,33 @@ do_logs() {
   fi
 }
 
+# Kafka stores partition logs under log.dirs (image default /tmp/kafka-logs unless KAFKA_LOG_DIRS
+# overrides it). Both paths are resolved inside the container so the report tracks wherever the
+# broker actually writes. Partition dirs are named <topic>-<n>; summing by stripping that suffix
+# yields per-topic totals.
+do_kafka_disk() {
+  compose exec -T kafka sh -c '
+    dir="${KAFKA_LOG_DIRS:-/tmp/kafka-logs}"
+    [ -d "$dir" ] || { echo "no kafka log dir at $dir" >&2; exit 1; }
+    printf "total  %s  %s\n\n" "$(du -sh "$dir" | cut -f1)" "$dir"
+    du -sm "$dir"/*/ 2>/dev/null | awk "
+      { n=split(\$2, p, \"/\"); base=(p[n]==\"\")?p[n-1]:p[n];
+        topic=base; sub(/-[0-9]+\$/, \"\", topic);
+        mb[topic]+=\$1; parts[topic]++ }
+      END { for (t in mb) printf \"%-22s %6d MB  (%d part%s)\n\",
+              t, mb[t], parts[t], (parts[t]==1?\"\":\"s\") }
+    " | sort -k2 -rn
+  '
+}
+
 require_docker
 
 mode="$1"
 shift
 case "$mode" in
-  --build) do_build "$@" ;;
-  --stop)  do_stop "$@" ;;
-  --logs)  do_logs "$@" ;;
-  *) echo "Unknown command: $mode (expected --build | --stop | --logs; see -h)" >&2; exit 1 ;;
+  --build)      do_build "$@" ;;
+  --stop)       do_stop "$@" ;;
+  --logs)       do_logs "$@" ;;
+  --kafka-disk) do_kafka_disk ;;
+  *) echo "Unknown command: $mode (expected --build | --stop | --logs | --kafka-disk; see -h)" >&2; exit 1 ;;
 esac
