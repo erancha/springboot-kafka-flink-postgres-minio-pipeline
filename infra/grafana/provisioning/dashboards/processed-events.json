@@ -8,21 +8,37 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
-  "refresh": "10s",
+  "refresh": "1m",
   "time": {
     "from": "now-6h",
     "to": "now"
   },
   "panels": [
     {
+      "id": 99,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "⚠️ **Keep the refresh at 1m or slower.** These panels run aggregate queries over large, growing Postgres tables (e.g. raw `processed_events`, hundreds of MB); refreshing faster makes the queries overrun the interval and pile up, and Grafana cancels them. For fast (15s) live metrics use the **Pipeline Health** dashboard instead — it queries Prometheus, not Postgres."
+      }
+    },
+    {
       "id": 1,
       "type": "barchart",
-      "title": "Count events by type",
+      "title": "Events by type — raw vs Flink-aggregated",
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "datasource": {
         "type": "postgres",
@@ -32,14 +48,18 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT event_type AS type, COUNT(*)::bigint AS count\nFROM processed_events\nGROUP BY event_type\nORDER BY COUNT(*) DESC;"
+          "rawSql": "SELECT r.event_type AS type,\n       r.cnt::bigint AS raw,\n       COALESCE(a.cnt, 0)::bigint AS aggregated\nFROM (SELECT event_type, COUNT(*) AS cnt FROM processed_events GROUP BY event_type) r\nLEFT JOIN (SELECT event_type, SUM(event_count) AS cnt FROM event_type_counts_agg GROUP BY event_type) a\n  ON a.event_type = r.event_type\nORDER BY r.event_type;"
         }
       ],
       "options": {
         "xField": "type",
-        "yField": "count",
         "orientation": "horizontal",
-        "showValue": "always"
+        "showValue": "always",
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -50,14 +70,14 @@
       }
     },
     {
-      "id": 2,
-      "type": "table",
-      "title": "Latest processed records (20)",
+      "id": 7,
+      "type": "timeseries",
+      "title": "DATA events per 5m window — raw vs Flink-aggregated",
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 3
       },
       "datasource": {
         "type": "postgres",
@@ -66,21 +86,75 @@
       "targets": [
         {
           "refId": "A",
-          "format": "table",
-          "rawSql": "SELECT id, event_type, event_time, image_object_key, inserted_at\nFROM processed_events\nORDER BY inserted_at DESC\nLIMIT 20;"
+          "format": "time_series",
+          "rawSql": "SELECT to_timestamp(floor(extract(epoch FROM event_time) / 300) * 300) AS time,\n       COUNT(*)::bigint AS \"raw\"\nFROM processed_events\nWHERE event_type = 'DATA' AND $__timeFilter(event_time)\nGROUP BY 1\nORDER BY 1;"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawSql": "SELECT window_start AS time,\n       event_count::bigint AS \"aggregated\"\nFROM event_type_counts_agg\nWHERE event_type = 'DATA' AND $__timeFilter(window_start)\nORDER BY 1;"
         }
       ],
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm"
-      },
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "align": "auto"
-          }
+            "showPoints": "always",
+            "pointSize": 6,
+            "lineWidth": 0
+          },
+          "unit": "none",
+          "decimals": 0
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aggregated"
+            },
+            "properties": [
+              {
+                "id": "custom.pointSize",
+                "value": 14
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "rgba(255, 165, 0, 0.35)"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "raw"
+            },
+            "properties": [
+              {
+                "id": "custom.pointSize",
+                "value": 5
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -91,7 +165,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 12
       },
       "datasource": {
         "type": "postgres",
@@ -137,7 +211,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 9
+        "y": 12
       },
       "datasource": {
         "type": "postgres",
@@ -176,7 +250,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 19
+        "y": 22
       },
       "datasource": {
         "type": "postgres",
@@ -211,7 +285,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 19
+        "y": 22
       },
       "datasource": {
         "type": "postgres",
@@ -240,6 +314,40 @@
         "tooltip": {
           "mode": "single"
         }
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Latest processed records (20)",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres-warehouse"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT id, event_type, event_time, image_object_key, inserted_at\nFROM processed_events\nORDER BY inserted_at DESC\nLIMIT 20;"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
       }
     }
   ]
