@@ -1,18 +1,19 @@
 apiVersion: 1
 
-# Flink-health alert rules (v1): liveness + stability. Each rule pairs an instant Prometheus
-# query (datasource prometheus-pipeline) with a threshold expression that produces the firing
-# condition. Metric names are verified against the Flink 2.2 prometheus reporter on :9249.
-# Checkpoint-failure and consumer-lag/backpressure rules are deferred to a v2 pass.
+# Pipeline-health alert rules: liveness + stability + progress. Each rule pairs an instant
+# Prometheus query (datasource prometheus-pipeline) with a threshold expression that produces
+# the firing condition. Flink-side metric names are verified against the Flink 2.2 prometheus
+# reporter on :9249; consumer-progress metrics come from kafka-exporter (job="kafka").
+# Checkpoint-failure and backpressure rules are deferred to a later pass.
 groups:
   - orgId: 1
     name: flink-health
     folder: Flink Health
     interval: 1m
     rules:
-      # Either Flink process (JobManager or TaskManager) unreachable to Prometheus. On this
-      # single-JM/single-TM stack any one process loss stalls the pipeline. No-data (Prometheus
-      # itself unreachable) is treated as firing rather than silently masked.
+      # Fires when Prometheus cannot scrape a Flink process — the JobManager or a TaskManager is
+      # down or unreachable. There is one of each, so losing either halts the whole pipeline. If
+      # Prometheus itself is unreachable the query returns no data, which also fires.
       - uid: flink-target-down
         title: Flink target down
         condition: C
@@ -49,9 +50,9 @@ groups:
                     type: lt
                     params: [1]
 
-      # JobManager alive but no job in RUNNING state (job failed/cancelled while JM stays up).
-      # The JM-dead case is already covered by flink-target-down. numRunningJobs is JM-scoped, so
-      # its series disappearing (JM gone) maps to no-data, also treated as firing.
+      # Fires when the JobManager is up but the streaming job is not RUNNING — it failed or was
+      # cancelled. A dead JobManager is already caught by "Flink target down". If the JobManager
+      # is gone the metric disappears, returning no data, which also fires.
       - uid: flink-job-not-running
         title: Flink job not running
         condition: C
@@ -88,9 +89,9 @@ groups:
                     type: lt
                     params: [1]
 
-      # Job up but thrashing: restarts accumulating over a 10m window (poison record, sink outage,
-      # crash-loop). numRestarts is job-scoped and vanishes if the job dies entirely, so no-data
-      # here means "no running job" — owned by flink-job-not-running, not this rule (noDataState OK).
+      # Fires when the job keeps restarting — more than twice in 10 minutes — a sign it is crashing
+      # repeatedly on something like a bad record or a failing sink. If the job dies outright the
+      # metric disappears; that case belongs to "Flink job not running", so no data here stays OK.
       - uid: flink-restart-looping
         title: Flink restart looping
         condition: C
@@ -126,3 +127,65 @@ groups:
                 - evaluator:
                     type: gt
                     params: [2]
+
+      # Fires when the job is RUNNING but its Kafka source stopped making progress — which the
+      # Flink-process rules above cannot see. It looks for a backlog that is not shrinking (events
+      # waiting while the committed offset stays frozen), not merely a large one, so heavy load
+      # tests where the backlog spikes but keeps draining do not trip it. If the consumer group
+      # disappears (its offsets were wiped) the query returns no data, which also fires.
+      - uid: kafka-consumer-stalled
+        title: Kafka consumer stalled
+        condition: D
+        for: 2m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+          host_machine: $MACHINE_NAME
+        annotations:
+          summary: '{{ $labels.host_machine }} — flink-processor has a Kafka backlog that is not draining'
+        data:
+          # Backlog: events waiting to be processed, summed across the group's partitions.
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-pipeline
+            model:
+              refId: A
+              expr: sum(kafka_consumergroup_lag{job="kafka", consumergroup="flink-processor"})
+              instant: true
+              range: false
+          # Offsets the consumer committed in the last 10 minutes; 0 means it is not advancing.
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-pipeline
+            model:
+              refId: B
+              expr: sum(increase(kafka_consumergroup_current_offset{job="kafka", consumergroup="flink-processor"}[10m]))
+              instant: true
+              range: false
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              refId: C
+              type: math
+              expression: $A > 0 && $B == 0
+          - refId: D
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              refId: D
+              type: threshold
+              expression: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
