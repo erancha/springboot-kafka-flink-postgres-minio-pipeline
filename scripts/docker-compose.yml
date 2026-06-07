@@ -41,7 +41,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      # This path must be one the Kafka image already creates: a new volume inherits the owner of
+      # the directory already at its mount point, so the non-root broker can write to it. A path
+      # the image does not create comes up owned by root, and the broker fails to start.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
+      - kafka_data:/var/lib/kafka/data
       - ./infra/kafka/log4j.properties:/mnt/shared/config/log4j.properties:ro
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:${KAFKA_PORT} --list 1>/dev/null"]
@@ -85,6 +90,8 @@ services:
         condition: service_healthy
 
   # Kafka bootstrap job to create the events and DLQ topics before producers/consumers begin exchanging events.
+  # Retention is set via --alter (not only --create --config) so it is enforced on every startup, including
+  # when the topic already exists on the persistent kafka_data volume. events: 1 day; DLQ: 7 days.
   kafka-init:
     image: apache/kafka:3.7.1
     depends_on:
@@ -92,6 +99,7 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c", "
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 8 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-configs.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --alter --entity-type topics --entity-name ${KAFKA_TOPIC} --add-config retention.ms=86400000 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000"]
 
   # PostgreSQL simulating a data-warehouse-like analytics database for processed DATA/IMAGE events.
@@ -317,6 +325,7 @@ services:
       - backend
 
 volumes:
+  kafka_data:
   postgres_data:
   minio_data:
   grafana_data:
