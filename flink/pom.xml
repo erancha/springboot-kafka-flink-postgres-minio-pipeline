@@ -95,10 +95,17 @@
       </exclusions>
     </dependency>
 
+    <!-- The PostgreSQL JDBC driver. Scope 'provided' keeps it out of the fat jar; the
+         maven-dependency-plugin below copies the jar to target/flink-lib, which the Docker build
+         then places in /opt/flink/lib so the driver loads from Flink's parent classloader. This
+         matters because DriverManager binds each driver registration to the classloader that loaded
+         the driver, and Flink discards the user classloader on every job restart: a driver loaded
+         from the fat jar would unregister on restart, while one in lib stays registered. -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
       <version>${postgres.version}</version>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>
@@ -154,6 +161,30 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.6.1</version>
+        <executions>
+          <execution>
+            <id>stage-jdbc-driver</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>org.postgresql</groupId>
+                  <artifactId>postgresql</artifactId>
+                  <version>${postgres.version}</version>
+                  <outputDirectory>${project.build.directory}/flink-lib</outputDirectory>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>

@@ -8,6 +8,8 @@ FROM apache/flink:2.2-java21
 USER root
 RUN mkdir -p /opt/job
 COPY --from=build /app/target/flink-job.jar /opt/job/app.jar
+# JDBC driver staged into Flink's lib; see flink/pom.xml.
+COPY --from=build /app/target/flink-lib/ /opt/flink/lib/
 # The stock config.yaml ships --add-exports=jdk.compiler/... in env.java.opts.all, but this image
 # is JRE-based and has no jdk.compiler module, so every Flink JVM prints "Unknown module" at startup
 # (a pre-logging stderr line log4j cannot filter). Strip only those tokens; all other current and
