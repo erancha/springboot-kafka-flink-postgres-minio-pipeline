@@ -131,13 +131,15 @@ groups:
       # Fires when the job is RUNNING but its Kafka source stopped making progress — which the
       # Flink-process rules above cannot see. It looks for a backlog that is not shrinking (events
       # waiting while the committed offset stays frozen), not merely a large one, so heavy load
-      # tests where the backlog spikes but keeps draining do not trip it. If the consumer group
-      # disappears (its offsets were wiped) the query returns no data, which also fires.
+      # tests where the backlog spikes but keeps draining do not trip it. The lag/offset series only
+      # exist once the group has consumed, so both queries coalesce to 0 (`or vector(0)`): before the
+      # job registers the group — every cold start — the backlog reads 0 and the rule stays quiet,
+      # instead of going NoData and firing a false "stalled" on boot.
       - uid: kafka-consumer-stalled
         title: Kafka consumer stalled
         condition: D
         for: 2m
-        noDataState: Alerting
+        noDataState: OK
         execErrState: Error
         labels:
           severity: critical
@@ -153,7 +155,7 @@ groups:
             datasourceUid: prometheus-pipeline
             model:
               refId: A
-              expr: sum(kafka_consumergroup_lag{job="kafka", consumergroup="flink-processor"})
+              expr: sum(kafka_consumergroup_lag{job="kafka", consumergroup="flink-processor"}) or vector(0)
               instant: true
               range: false
           # Offsets the consumer committed in the last 10 minutes; 0 means it is not advancing.
@@ -164,7 +166,7 @@ groups:
             datasourceUid: prometheus-pipeline
             model:
               refId: B
-              expr: sum(increase(kafka_consumergroup_current_offset{job="kafka", consumergroup="flink-processor"}[10m]))
+              expr: sum(increase(kafka_consumergroup_current_offset{job="kafka", consumergroup="flink-processor"}[10m])) or vector(0)
               instant: true
               range: false
           - refId: C
