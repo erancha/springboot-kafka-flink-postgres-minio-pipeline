@@ -89,8 +89,8 @@ public class StreamingJob {
     restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
     executionEnv.configure(restartCfg);
 
-    // Conservative checkpoint tuning for a low-volume local pipeline; these are sane starting
-    // points, not workload-derived. The checkpoint interval (10 s) is set above.
+    // Conservative checkpoint tuning for a low-volume local pipeline; these are reasonable starting
+    // points, not workload-derived.
     CheckpointConfig ckptConfig = executionEnv.getCheckpointConfig();
     ckptConfig.setMinPauseBetweenCheckpoints(5_000);
     ckptConfig.setCheckpointTimeout(60_000);
@@ -103,8 +103,7 @@ public class StreamingJob {
         .setGroupId("flink-processor")
         .setStartingOffsets(OffsetsInitializer.earliest())
         .setValueOnlyDeserializer(new SimpleStringSchema())
-        // Disable Kafka auto-commit; offsets are committed only when a Flink checkpoint succeeds,
-        // so the committed offset reflects exactly what has been durably processed.
+        // Disable Kafka auto-commit; offsets are committed only when a Flink checkpoint succeeds.
         .setProperty("enable.auto.commit", "false")
         .build();
 

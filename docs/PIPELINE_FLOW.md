@@ -153,3 +153,23 @@ The DLQ is **write-only here**. The capture path is complete (at-least-once sink
 - Kafka: single broker, replication factor 1 — broker loss means data loss.
 - Flink: single JobManager (no HA), single TaskManager — no automatic failover at the cluster level.
 - Postgres and MinIO: no replication or standby.
+
+## Flink building blocks
+
+A pointer map — open the source for detail. The **job** (checkpoints, windows, sources, sinks,
+async I/O) is all in `StreamingJob`; the **cluster** (slots, parallelism, services) is in Docker Compose.
+
+Tasks aren't declared anywhere — Flink's JobManager derives them at submit time:
+**operators** (`StreamingJob`) **× parallelism** (`-p 8` in compose) **→ subtasks → scheduled into slots**
+(8 on the TaskManager). See the live layout in the Flink UI (port 8081).
+
+Operator state (the in-flight window counts) uses Flink's default in-memory store — fine at this
+volume, so no RocksDB or `config.yaml` tuning is in the repo.
+
+| Building block | Source |
+| --- | --- |
+| Job, checkpoints, restart, Kafka source, watermarks, windows, async I/O, DLQ sink | [`StreamingJob.java`](../flink/src/main/java/com/webcharm/pipeline/StreamingJob.java) |
+| MinIO async enrichment operator | [`MinioAsyncImageFunction.java`](../flink/src/main/java/com/webcharm/pipeline/functions/MinioAsyncImageFunction.java) |
+| Postgres sinks (bounded JDBC) | [`functions/`](../flink/src/main/java/com/webcharm/pipeline/functions/) + [`sinks/`](../flink/src/main/java/com/webcharm/pipeline/sinks/) |
+| Fat JAR build / image | [`flink/pom.xml`](../flink/pom.xml), [`flink/Dockerfile`](../flink/Dockerfile) |
+| JobManager / TaskManager / slots / parallelism / job submission | [`scripts/docker-compose.yml`](../scripts/docker-compose.yml) (`flink-*` services) |
