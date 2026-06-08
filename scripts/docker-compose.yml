@@ -60,7 +60,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768m
+          memory: 512m
     ports:
       - "${KAFKA_UI_PORT}:8080"
     environment:
@@ -98,7 +98,7 @@ services:
       kafka:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c", "
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions 8 --replication-factor 1 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions ${PIPELINE_PARALLELISM} --replication-factor 1 &&
       /opt/kafka/bin/kafka-configs.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --alter --entity-type topics --entity-name ${KAFKA_TOPIC} --add-config retention.ms=86400000 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000"]
 
@@ -109,6 +109,8 @@ services:
       resources:
         limits:
           memory: 768m
+    # max_connections must clear ~4 x PIPELINE_PARALLELISM (the Flink sinks' per-slot pools); see .env.
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS}"]
     environment:
       <<: *postgres-credentials
     ports:
@@ -127,7 +129,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384m
+          memory: 256m
     ports:
       - "${GRAFANA_PORT}:3000"
     environment:
@@ -157,7 +159,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512m
+          memory: 384m
     ports:
       - "${PROMETHEUS_PORT}:9090"
     volumes:
@@ -200,6 +202,8 @@ services:
   backend:
     build:
       context: ./backend
+    # CPU weight; ~50% of the 1024 default deprioritizes it when cores are saturated (no-op when free).
+    # cpu_shares: 512
     deploy:
       resources:
         limits:
@@ -260,10 +264,12 @@ services:
   flink-taskmanager:
     <<: *flink-image
     command: taskmanager
+    # CPU weight; double the 1024 default prioritizes it when cores are saturated (no-op when free).
+    # cpu_shares: 2048
     deploy:
       resources:
         limits:
-          memory: 2048m
+          memory: ${FLINK_TM_MEMORY}
     volumes:
       - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
     environment:
@@ -271,7 +277,10 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 8
+        taskmanager.numberOfTaskSlots: ${PIPELINE_PARALLELISM}
+        taskmanager.memory.process.size: ${FLINK_TM_MEMORY}
+        taskmanager.memory.network.min: 512mb
+        taskmanager.memory.network.max: 512mb
         metrics.reporters: prom
         metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
         metrics.reporter.prom.port: 9249
@@ -306,7 +315,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    command: ["/bin/bash", "-lc", "until curl -fsS http://flink-jobmanager:8081/overview >/dev/null; do echo 'waiting for flink-jobmanager...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p 8 -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
+    command: ["/bin/bash", "-lc", "until curl -fsS http://flink-jobmanager:8081/overview >/dev/null; do echo 'waiting for flink-jobmanager...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
 
   # React UI (served via Nginx) used to submit IMAGE/DATA events to the backend API.
   ui:
