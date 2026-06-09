@@ -39,20 +39,23 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   }
 
   /** A buffered row: the original value (for DLQ routing) and the binder that sets its parameters. */
-  private record Pending<T>(T value, JdbcOperation binder) {}
+  private record Pending<T>(T value, JdbcOperation binder) {
+  }
 
   private static final Logger log = LoggerFactory.getLogger(JdbcWriterBase.class);
 
   private static final long INITIAL_BACKOFF_MS = 1_000;
   private static final int BACKOFF_MULTIPLIER = 2;
   // Bounded so the worst case (attempts x query timeout + reconnect + backoff) stays under the
-  // 60 s checkpoint timeout. Default 2 attempts, 8 s query/socket, 5 s connect, 8 s pool borrow.
+  // 60 s checkpoint timeout. Default 2 attempts, 20 s query/socket (JDBC_*_TIMEOUT_SECS),
+  // 5 s connect, 8 s pool borrow => ~49 s worst case. The 20 s timeout lets a batch ride out a
+  // Postgres checkpoint I/O spike; the prior 8 s tripped on those spikes and forced a sink restart.
+  // Raising query/socket past ~25 s breaches the 60 s budget unless JDBC_MAX_ATTEMPTS is also cut.
   private static final int MAX_ATTEMPTS = Math.max(1, EnvConfig.envInt("JDBC_MAX_ATTEMPTS", 2));
-  private static final int QUERY_TIMEOUT_SECS = EnvConfig.envInt("JDBC_QUERY_TIMEOUT_SECS", 8);
-  private static final int SOCKET_TIMEOUT_SECS = EnvConfig.envInt("JDBC_SOCKET_TIMEOUT_SECS", 8);
+  private static final int QUERY_TIMEOUT_SECS = EnvConfig.envInt("JDBC_QUERY_TIMEOUT_SECS", 20);
+  private static final int SOCKET_TIMEOUT_SECS = EnvConfig.envInt("JDBC_SOCKET_TIMEOUT_SECS", 20);
   private static final int CONNECT_TIMEOUT_SECS = EnvConfig.envInt("JDBC_CONNECT_TIMEOUT_SECS", 5);
-  private static final int POOL_CONNECTION_TIMEOUT_MS =
-      EnvConfig.envInt("JDBC_POOL_CONNECTION_TIMEOUT_MS", 8_000);
+  private static final int POOL_CONNECTION_TIMEOUT_MS = EnvConfig.envInt("JDBC_POOL_CONNECTION_TIMEOUT_MS", 8_000);
 
   /** Non-null when constructed with a pool; null when constructed with a directly-supplied Connection. */
   private final DataSource datasource;
@@ -305,14 +308,40 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     return state.startsWith("08") || state.startsWith("40") || state.startsWith("57");
   }
 
-  /** Closes the prepared statement, the connection, and the pool if this instance owns one. */
+  /**
+   * Closes the prepared statement, the connection, and the pool if this instance owns one. Each step
+   * runs even if an earlier one throws, so the owned pool is always released: the failure that
+   * triggers a sink restart (broken socket) leaves the statement and connection in a state where
+   * close() can throw, and aborting before the pool close would orphan a HikariCP pool and leak one
+   * Postgres connection per restart. The first failure propagates with the rest as suppressed.
+   */
   @Override
   public void close() throws Exception {
-    if (sqlStmt != null)
-      sqlStmt.close();
-    if (conn != null)
-      conn.close();
-    if (datasource instanceof AutoCloseable ac)
-      ac.close();
+    Exception failure = null;
+    failure = closeQuietly(sqlStmt, failure);
+    failure = closeQuietly(conn, failure);
+    if (datasource instanceof AutoCloseable ac) {
+      failure = closeQuietly(ac, failure);
+    }
+    if (failure != null) {
+      throw failure;
+    }
+  }
+
+  /** Closes a resource (no-op if null), folding any thrown exception into the running first-failure. */
+  private static Exception closeQuietly(AutoCloseable resource, Exception failure) {
+    if (resource == null) {
+      return failure;
+    }
+    try {
+      resource.close();
+      return failure;
+    } catch (Exception e) {
+      if (failure == null) {
+        return e;
+      }
+      failure.addSuppressed(e);
+      return failure;
+    }
   }
 }

@@ -110,7 +110,19 @@ services:
         limits:
           memory: 768m
     # max_connections must clear ~4 x PIPELINE_PARALLELISM (the Flink sinks' per-slot pools); see .env.
-    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS}"]
+    # max_wal_size is lifted off the 1GB default: the batched event sink's WAL volume otherwise forces a
+    # checkpoint every ~15s, and the near-continuous flush I/O inflates INSERT latency past the sink
+    # socket timeout. wal_compression shrinks WAL to space checkpoints out further.
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS}
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - shared_buffers=192MB
+      - -c
+      - wal_compression=on
     environment:
       <<: *postgres-credentials
     ports:
@@ -275,6 +287,8 @@ services:
     environment:
       - ROOT_LOG_LEVEL=WARN
       - JDBC_BATCH_SIZE=${JDBC_BATCH_SIZE:-500}
+      - JDBC_SOCKET_TIMEOUT_SECS=${JDBC_SOCKET_TIMEOUT_SECS:-20}
+      - JDBC_QUERY_TIMEOUT_SECS=${JDBC_QUERY_TIMEOUT_SECS:-20}
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager

@@ -34,7 +34,7 @@ class JdbcWriterBaseBoundTest {
       // construction applies the bounded query timeout
     }
 
-    // default JDBC_QUERY_TIMEOUT_SECS = 8
-    verify(ps).setQueryTimeout(8);
+    // default JDBC_QUERY_TIMEOUT_SECS = 20
+    verify(ps).setQueryTimeout(20);
   }
 }

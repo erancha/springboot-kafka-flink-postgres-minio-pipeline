@@ -13,19 +13,19 @@ class JdbcWriterBaseUrlTest {
   @Test
   void noParams_appendsBothWithQuestionMark() {
     String out = JdbcWriterBase.withTimeoutParams("jdbc:postgresql://h:5432/db");
-    assertEquals("jdbc:postgresql://h:5432/db?socketTimeout=8&connectTimeout=5", out);
+    assertEquals("jdbc:postgresql://h:5432/db?socketTimeout=20&connectTimeout=5", out);
   }
 
   @Test
   void existingUnrelatedParam_appendsBothWithAmpersand() {
     String out = JdbcWriterBase.withTimeoutParams("jdbc:postgresql://h:5432/db?ssl=true");
-    assertEquals("jdbc:postgresql://h:5432/db?ssl=true&socketTimeout=8&connectTimeout=5", out);
+    assertEquals("jdbc:postgresql://h:5432/db?ssl=true&socketTimeout=20&connectTimeout=5", out);
   }
 
   @Test
   void onlyConnectTimeoutPresent_stillAppendsSocketTimeout() {
     String out = JdbcWriterBase.withTimeoutParams("jdbc:postgresql://h:5432/db?connectTimeout=3");
-    assertEquals("jdbc:postgresql://h:5432/db?connectTimeout=3&socketTimeout=8", out);
+    assertEquals("jdbc:postgresql://h:5432/db?connectTimeout=3&socketTimeout=20", out);
   }
 
   @Test
