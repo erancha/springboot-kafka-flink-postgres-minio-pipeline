@@ -1,11 +1,13 @@
 package com.webcharm.pipeline.sinks;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.webcharm.pipeline.config.EnvConfig;
 import com.webcharm.pipeline.types.ProcessedEvent;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,29 +27,35 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
 
   private final ObjectMapper mapper;
 
+  // High-volume path: batch size from JDBC_BATCH_SIZE (default 500). The aggregate sinks pass 1
+  // (per-row) since each window already coalesces to a single upsert.
   public PostgresProcessedEventWriter() {
-    super(envPool(), SQL);
+    super(envPool(), SQL, EnvConfig.envInt("JDBC_BATCH_SIZE", 500));
     this.mapper = new ObjectMapper();
     log.info("PostgresProcessedEventWriter ready");
   }
 
   PostgresProcessedEventWriter(String url, String user, String password) {
-    super(createPool(url, user, password), SQL);
+    this(url, user, password, 1);
+  }
+
+  PostgresProcessedEventWriter(String url, String user, String password, int batchSize) {
+    super(createPool(url, user, password), SQL, batchSize);
     this.mapper = new ObjectMapper();
     log.info("PostgresProcessedEventWriter ready");
   }
 
   PostgresProcessedEventWriter(Connection conn) {
-    super(conn, SQL);
+    super(conn, SQL, 1);
     this.mapper = new ObjectMapper();
     log.info("PostgresProcessedEventWriter ready");
   }
 
   @Override
-  public void write(ProcessedEvent value) throws IOException {
+  public List<FailedRow<ProcessedEvent>> write(ProcessedEvent value) throws IOException {
     String payloadJson = value.getPayload() == null ? null
         : mapper.writeValueAsString(value.getPayload());
-    executeWithRetry(sqlStmt -> {
+    return bufferRow(value, sqlStmt -> {
       sqlStmt.setObject(1, value.getId());
       sqlStmt.setString(2, value.getEventType());
       sqlStmt.setTimestamp(3, Timestamp.from(value.getEventTime()));
@@ -55,8 +63,6 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
       sqlStmt.setString(5, payloadJson);
       sqlStmt.setString(6, value.getImageObjectKey());
       sqlStmt.setTimestamp(7, Timestamp.from(Instant.now()));
-      sqlStmt.executeUpdate();
     });
-    log.debug("Wrote event id={} type={}", value.getId(), value.getEventType());
   }
 }

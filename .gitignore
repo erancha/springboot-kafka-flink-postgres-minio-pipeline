@@ -5,10 +5,12 @@
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/eclipse-java-formatter.xml
-docs/superpowers/
-docs/*-code-eval-*.md
 node_modules/
 org/
+
+docs/superpowers/
+docs/*-code-eval-*.md
+docs/batched-jdbc-sink-tradeoffs.md
 
 # Environment files — never commit credentials
 .env
@@ -16,7 +18,6 @@ org/
 *.local
 !.env.example
 flink/**/*.class
-docs/todo.md
 
 # JMeter: vendored runtime and per-run results are local artifacts
 jmeter/.runtime/

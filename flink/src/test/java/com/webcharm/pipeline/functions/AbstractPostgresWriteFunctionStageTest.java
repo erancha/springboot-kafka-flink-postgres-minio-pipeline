@@ -3,7 +3,6 @@ package com.webcharm.pipeline.functions;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.webcharm.pipeline.sinks.JdbcWriter;
-import com.webcharm.pipeline.sinks.PermanentJdbcException;
 import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import java.util.ArrayList;
@@ -20,11 +19,12 @@ import org.junit.jupiter.api.Test;
  */
 class AbstractPostgresWriteFunctionStageTest {
 
-  /** A writer whose every write is a permanent JDBC failure, to force the DLQ branch. */
+  /** A writer whose every write returns a permanent failure, to force the DLQ branch. */
   private static final class AlwaysPermanentWriter implements JdbcWriter<String> {
-    @Override public void write(String value) throws java.io.IOException {
-      throw new PermanentJdbcException("constraint violation", new RuntimeException("x"));
+    @Override public List<FailedRow<String>> write(String value) {
+      return List.of(new FailedRow<>(value, "constraint violation"));
     }
+    @Override public List<FailedRow<String>> flush() { return List.of(); }
     @Override public void close() {}
   }
 

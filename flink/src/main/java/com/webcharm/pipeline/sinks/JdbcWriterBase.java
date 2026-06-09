@@ -7,30 +7,39 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Shared JDBC scaffolding for Postgres sink writers: connection setup, prepared-statement lifecycle,
- * flush (no-op under autoCommit), and close. Subclasses supply the SQL and implement write().
+ * and a per-connection write buffer flushed as one committed batch. Subclasses supply the SQL and a
+ * per-row parameter binder via bufferRow().
  *
- * Connections are managed by a HikariCP pool (pool size 1 per writer instance, since each Flink
- * parallel slot gets its own writer). The pool validates and replaces connections that have gone
- * stale due to TCP timeouts or Postgres idle-connection culling.
+ * Each Flink parallel slot owns one writer, one HikariCP connection (pool size 1), and one buffer.
+ * Rows accumulate until batchSize, then flush() binds them into a single JDBC batch, executes it, and
+ * commits once — collapsing N round-trips and N commit fsyncs into one (reWriteBatchedInserts on the
+ * URL rewrites the inserts into a single multi-row statement). autoCommit is off so each batch is one
+ * transaction. At-least-once relies on the caller flushing before a checkpoint completes; the
+ * subclasses' idempotent upserts make replay safe.
  *
- * Transient JDBC errors (connection reset, deadlock — SQLState 08xxx/40xxx/57xxx) are retried with
- * exponential backoff and a fresh connection, then propagate as IOException once the retry budget
- * is exhausted. Permanent errors (constraint violations, invalid JSONB — all other SQLStates)
- * throw PermanentJdbcException immediately.
+ * Transient JDBC errors (SQLState 08xxx/40xxx/57xxx) retry the whole batch with exponential backoff
+ * and a fresh connection, then propagate as IOException. A permanent batch failure (other SQLStates)
+ * replays the batch row-by-row so the good rows still commit and the offending rows are returned for
+ * dead-letter routing rather than failing the whole batch.
  */
 abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
-  /** A unit of JDBC work performed against the supplied (always current) prepared statement. */
+  /** Binds one record's parameters onto the supplied (always current) prepared statement. */
   @FunctionalInterface
   interface JdbcOperation {
     void execute(PreparedStatement sqlStmt) throws SQLException;
   }
+
+  /** A buffered row: the original value (for DLQ routing) and the binder that sets its parameters. */
+  private record Pending<T>(T value, JdbcOperation binder) {}
 
   private static final Logger log = LoggerFactory.getLogger(JdbcWriterBase.class);
 
@@ -48,6 +57,9 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   /** Non-null when constructed with a pool; null when constructed with a directly-supplied Connection. */
   private final DataSource datasource;
   private final String sqlText;
+  private final int batchSize;
+  /** Rows buffered since the last flush, in arrival order. Bounded by batchSize except on close/checkpoint flush. */
+  private final List<Pending<T>> pending = new ArrayList<>();
 
   private Connection conn;
   private PreparedStatement sqlStmt;
@@ -70,7 +82,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
    */
   static HikariDataSource createPool(String url, String user, String password) {
     HikariConfig cfg = new HikariConfig();
-    cfg.setJdbcUrl(withTimeoutParams(url));
+    cfg.setJdbcUrl(withBatchRewrite(withTimeoutParams(url)));
     cfg.setUsername(user);
     cfg.setPassword(password);
     cfg.setMaximumPoolSize(1);
@@ -96,18 +108,30 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   }
 
   /**
-   * Borrows a connection from the given pool, enables autoCommit, and prepares the supplied SQL.
-   * The pool is owned by this instance and closed in close().
+   * Appends reWriteBatchedInserts=true unless already present. This is what lets the Postgres driver
+   * rewrite a batch of single-row INSERTs into one multi-row statement, so a flush is one round-trip.
    */
-  protected JdbcWriterBase(DataSource datasource, String sqlText) {
+  static String withBatchRewrite(String url) {
+    if (url.contains("reWriteBatchedInserts=")) {
+      return url;
+    }
+    return url + (url.contains("?") ? "&" : "?") + "reWriteBatchedInserts=true";
+  }
+
+  /**
+   * Borrows a connection from the given pool, disables autoCommit (so each flush is one transaction),
+   * and prepares the supplied SQL. The pool is owned by this instance and closed in close().
+   */
+  protected JdbcWriterBase(DataSource datasource, String sqlText, int batchSize) {
     this.datasource = datasource;
     this.sqlText = sqlText;
+    this.batchSize = Math.max(1, batchSize);
     try {
       this.conn = datasource.getConnection();
-      this.conn.setAutoCommit(true);
+      this.conn.setAutoCommit(false);
       this.sqlStmt = prepareSqlStmt(conn, sqlText);
       String url = (datasource instanceof HikariDataSource hds) ? hds.getJdbcUrl() : datasource.toString();
-      log.info("Connected to {} via connection pool", url);
+      log.info("Connected to {} via connection pool (batchSize={})", url, this.batchSize);
     } catch (Exception e) {
       if (datasource instanceof AutoCloseable ac) {
         try {
@@ -123,16 +147,82 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
    * Uses an already-open Connection directly, bypassing the pool; datasource is null,
    * so close() closes only sqlStmt and conn.
    */
-  protected JdbcWriterBase(Connection conn, String sqlText) {
+  protected JdbcWriterBase(Connection conn, String sqlText, int batchSize) {
     this.datasource = null;
     this.sqlText = sqlText;
+    this.batchSize = Math.max(1, batchSize);
     this.conn = conn;
     try {
-      this.conn.setAutoCommit(true);
+      this.conn.setAutoCommit(false);
       this.sqlStmt = prepareSqlStmt(conn, sqlText);
     } catch (Exception e) {
       throw new RuntimeException("Failed to prepare statement", e);
     }
+  }
+
+  /**
+   * Buffers one row, supplying the binder that will set its parameters at flush time. Flushes when the
+   * buffer reaches batchSize. Returns the rows that permanently failed during a triggered flush
+   * (empty otherwise), so the caller can route them to a dead-letter sink.
+   */
+  protected final List<FailedRow<T>> bufferRow(T value, JdbcOperation binder) throws IOException {
+    pending.add(new Pending<>(value, binder));
+    if (pending.size() >= batchSize) {
+      return flush();
+    }
+    return List.of();
+  }
+
+  /**
+   * Binds and executes all buffered rows as one committed batch. A transient failure retries the
+   * whole batch (see executeWithRetry); a permanent failure replays the batch row-by-row so the good
+   * rows still commit and the offending rows are returned for DLQ routing. The buffer is drained
+   * regardless — on a propagated transient error the rows replay from the source after restart.
+   */
+  @Override
+  public List<FailedRow<T>> flush() throws IOException {
+    if (pending.isEmpty()) {
+      return List.of();
+    }
+    List<Pending<T>> batch = List.copyOf(pending);
+    pending.clear();
+    try {
+      executeWithRetry(stmt -> {
+        stmt.clearBatch();
+        for (Pending<T> p : batch) {
+          p.binder().execute(stmt);
+          stmt.addBatch();
+        }
+        stmt.executeBatch();
+        stmt.getConnection().commit();
+      });
+    } catch (PermanentJdbcException e) {
+      return isolatePoison(batch);
+    }
+    return List.of();
+  }
+
+  /**
+   * Replays a batch that hit a permanent failure one row at a time so the good rows still commit;
+   * returns the rows whose individual write also failed permanently. A transient failure here
+   * propagates (after the retry budget) so the surviving rows replay from the source after restart.
+   */
+  private List<FailedRow<T>> isolatePoison(List<Pending<T>> batch) throws IOException {
+    List<FailedRow<T>> failed = new ArrayList<>();
+    for (Pending<T> p : batch) {
+      try {
+        executeWithRetry(stmt -> {
+          p.binder().execute(stmt);
+          stmt.executeUpdate();
+          stmt.getConnection().commit();
+        });
+      } catch (PermanentJdbcException e) {
+        log.warn("Permanent JDBC failure on an isolated row (SQLState in cause); routing to DLQ: {}",
+            e.getMessage());
+        failed.add(new FailedRow<>(p.value(), e.getMessage()));
+      }
+    }
+    return failed;
   }
 
   /**
@@ -183,7 +273,8 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
 
   /**
    * Closes the current statement and connection, then borrows a fresh connection from the pool
-   * and re-prepares the statement. No-op when there is no pool (datasource is null).
+   * and re-prepares the statement. No-op when there is no pool (datasource is null). The closed
+   * connection discards any transaction left aborted by the failure that triggered the reconnect.
    */
   private void reconnect() throws Exception {
     if (datasource == null)
@@ -197,7 +288,7 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
     } catch (Exception ignored) {
     }
     conn = datasource.getConnection();
-    conn.setAutoCommit(true);
+    conn.setAutoCommit(false);
     sqlStmt = prepareSqlStmt(conn, sqlText);
     log.info("Reconnected to Postgres after transient failure");
   }

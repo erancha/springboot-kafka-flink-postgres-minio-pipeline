@@ -16,10 +16,11 @@ class JdbcWriterBaseBoundTest {
   /** Minimal concrete writer for exercising the base-class statement preparation. */
   private static final class TestWriter extends JdbcWriterBase<String> {
     TestWriter(Connection conn) {
-      super(conn, "SELECT 1");
+      super(conn, "SELECT 1", 1);
     }
     @Override
-    public void write(String value) {
+    public java.util.List<JdbcWriter.FailedRow<String>> write(String value) {
+      return java.util.List.of();
     }
   }
 
