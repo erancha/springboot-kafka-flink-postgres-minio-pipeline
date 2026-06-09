@@ -52,7 +52,9 @@ pipeline. Events flow one direction — Frontend → Backend → Kafka → Flink
     MinIO by Flink; only the object key is persisted to Postgres, never the source URL).
     [Why clone rather than reference](docs/PIPELINE_FLOW.md#async-image-enrichment): durable and
     self-contained.
-  - `DATA` events are stored in Postgres.
+  - `DATA` events are stored in Postgres — written in per-slot
+    [committed batches](docs/PIPELINE_FLOW.md#batched-postgres-writes) for throughput, flushed every
+    checkpoint so the delivery guarantee is unchanged.
 
 Everything after Kafka is the Flink job's responsibility
 ([`StreamingJob.java`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)); see

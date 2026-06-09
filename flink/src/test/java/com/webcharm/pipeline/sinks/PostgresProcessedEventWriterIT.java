@@ -122,6 +122,35 @@ class PostgresProcessedEventWriterIT {
     }
   }
 
+  /** With batchSize > 1, buffered rows are invisible until a flush, which commits them all in one batch. */
+  @Test
+  void batchedWrites_areVisibleOnlyAfterFlush() throws Exception {
+    try (PostgresProcessedEventWriter batched =
+        new PostgresProcessedEventWriter(pg.getJdbcUrl(), "postgres", "postgres", 3)) {
+      UUID id1 = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+      UUID id2 = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
+      batched.write(new ProcessedEvent(id1, "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
+          null, null, null, LocalDate.of(2024, 1, 15)));
+      batched.write(new ProcessedEvent(id2, "DATA", Instant.parse("2024-01-15T10:00:00Z"), "ui",
+          null, null, null, LocalDate.of(2024, 1, 15)));
+
+      assertEquals(0, rowCount(), "rows must stay buffered until the batch is flushed");
+
+      batched.flush();
+
+      assertEquals(2, rowCount(), "flush commits the whole buffered batch");
+    }
+  }
+
+  private int rowCount() throws Exception {
+    try (Connection c = DriverManager.getConnection(pg.getJdbcUrl(), "postgres", "postgres");
+         Statement st = c.createStatement();
+         ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM processed_events")) {
+      rs.next();
+      return rs.getInt(1);
+    }
+  }
+
   /** Asserts the prepared statement's query timeout is bounded, against a real Postgres connection rather than a mock. */
   @Test
   void preparedStatement_hasBoundedQueryTimeout() throws Exception {

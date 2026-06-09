@@ -26,15 +26,16 @@ class JdbcWriterBaseReconnectTest {
     final AtomicReference<PreparedStatement> lastSeen = new AtomicReference<>();
 
     RecordingWriter(DataSource ds) {
-      super(ds, "SELECT 1");
+      super(ds, "SELECT 1", 1);
     }
 
     @Override
-    public void write(String value) throws IOException {
+    public java.util.List<JdbcWriter.FailedRow<String>> write(String value) throws IOException {
       executeWithRetry(sqlStmt -> {
         lastSeen.set(sqlStmt);
         sqlStmt.executeUpdate();
       });
+      return java.util.List.of();
     }
   }
 

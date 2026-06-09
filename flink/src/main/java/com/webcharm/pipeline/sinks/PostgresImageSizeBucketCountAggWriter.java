@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,31 +23,28 @@ public class PostgresImageSizeBucketCountAggWriter extends JdbcWriterBase<ImageS
           + "image_count = EXCLUDED.image_count, updated_at = EXCLUDED.updated_at";
 
   public PostgresImageSizeBucketCountAggWriter() {
-    super(envPool(), SQL);
+    super(envPool(), SQL, 1);
     log.info("PostgresImageSizeBucketCountAggWriter ready");
   }
 
   PostgresImageSizeBucketCountAggWriter(String url, String user, String password) {
-    super(createPool(url, user, password), SQL);
+    super(createPool(url, user, password), SQL, 1);
     log.info("PostgresImageSizeBucketCountAggWriter ready");
   }
 
   PostgresImageSizeBucketCountAggWriter(Connection conn) {
-    super(conn, SQL);
+    super(conn, SQL, 1);
     log.info("PostgresImageSizeBucketCountAggWriter ready");
   }
 
   @Override
-  public void write(ImageSizeBucketCountAgg value) throws IOException {
-    executeWithRetry(sqlStmt -> {
+  public List<FailedRow<ImageSizeBucketCountAgg>> write(ImageSizeBucketCountAgg value) throws IOException {
+    return bufferRow(value, sqlStmt -> {
       sqlStmt.setTimestamp(1, Timestamp.from(value.getWindowStart()));
       sqlStmt.setTimestamp(2, Timestamp.from(value.getWindowEnd()));
       sqlStmt.setString(3, value.getBucket());
       sqlStmt.setLong(4, value.getImageCount());
       sqlStmt.setTimestamp(5, Timestamp.from(Instant.now()));
-      sqlStmt.executeUpdate();
     });
-    log.debug("Wrote window count: bucket={} start={} count={}",
-        value.getBucket(), value.getWindowStart(), value.getImageCount());
   }
 }

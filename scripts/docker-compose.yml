@@ -274,6 +274,7 @@ services:
       - ./infra/flink/log4j-console.properties:/opt/flink/conf/log4j-console.properties:ro
     environment:
       - ROOT_LOG_LEVEL=WARN
+      - JDBC_BATCH_SIZE=${JDBC_BATCH_SIZE:-500}
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: flink-jobmanager
