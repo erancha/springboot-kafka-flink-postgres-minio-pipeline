@@ -154,11 +154,18 @@ class PostgresProcessedEventWriterIT {
   /** Asserts the prepared statement's query timeout is bounded, against a real Postgres connection rather than a mock. */
   @Test
   void preparedStatement_hasBoundedQueryTimeout() throws Exception {
-    // Reflectively reach the private sqlStmt on the base class to assert the bound is applied
-    // against a REAL Postgres connection (not a mock), proving the worst case is bounded.
-    Field f = JdbcWriterBase.class.getDeclaredField("sqlStmt");
-    f.setAccessible(true);
-    PreparedStatement ps = (PreparedStatement) f.get(writer);
-    assertEquals(8, ps.getQueryTimeout()); // default JDBC_QUERY_TIMEOUT_SECS = 8
+    // Reflectively reach the private sqlStmt and the configured bound on the base class to assert the
+    // bound is applied against a REAL Postgres connection (not a mock), proving the worst case is
+    // bounded. Reading QUERY_TIMEOUT_SECS instead of a literal keeps the assertion in step with the
+    // production default if it is retuned.
+    Field stmtField = JdbcWriterBase.class.getDeclaredField("sqlStmt");
+    stmtField.setAccessible(true);
+    PreparedStatement ps = (PreparedStatement) stmtField.get(writer);
+
+    Field timeoutField = JdbcWriterBase.class.getDeclaredField("QUERY_TIMEOUT_SECS");
+    timeoutField.setAccessible(true);
+    int expectedTimeout = timeoutField.getInt(null);
+
+    assertEquals(expectedTimeout, ps.getQueryTimeout());
   }
 }
