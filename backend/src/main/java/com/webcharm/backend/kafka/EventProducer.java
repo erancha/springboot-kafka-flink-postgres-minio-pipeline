@@ -22,7 +22,7 @@ public class EventProducer {
   private final String topic;
   private final int sendTimeoutSeconds;
 
-  /** Spring constructor — all dependencies injected; sendTimeoutSeconds defaults to 5 if app.kafka.send-timeout-seconds is not set. */
+  /** Spring constructor — all dependencies injected; sendTimeoutSeconds is bound from app.kafka.send-timeout-seconds (default in application.yml). */
   public EventProducer(
       KafkaTemplate<String, String> kafkaTemplate,
       ObjectMapper objectMapper,
@@ -56,11 +56,12 @@ public class EventProducer {
           result.getRecordMetadata().partition(),
           result.getRecordMetadata().offset());
     } catch (TimeoutException e) {
-      log.error("Timed out publishing event id={} to topic={} after {}s", key, topic, sendTimeoutSeconds);
-      throw new KafkaPublishException("Kafka send timed out for event id=" + key, e);
+      throw new KafkaPublishException(
+          "Kafka send timed out for event id=" + key + " to topic=" + topic + " after " + sendTimeoutSeconds + "s", e);
     } catch (ExecutionException e) {
-      log.error("Failed to publish event id={} to topic={}: {}", key, topic, e.getCause().getMessage());
-      throw new KafkaPublishException("Kafka send failed for event id=" + key, e.getCause());
+      throw new KafkaPublishException(
+          "Kafka send failed for event id=" + key + " to topic=" + topic + ": " + e.getCause().getMessage(),
+          e.getCause());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new KafkaPublishException("Interrupted while publishing event id=" + key, e);

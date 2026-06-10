@@ -4,6 +4,8 @@ server:
 logging:
   level:
     com.webcharm: ${LOG_LEVEL:INFO}
+    # ERROR hides the NOT_LEADER_OR_FOLLOWER WARN storm (self-healing leader-move retries); real failures still log.
+    org.apache.kafka.clients.producer.internals.Sender: ${KAFKA_SENDER_LOG_LEVEL:ERROR}
 
 spring:
   servlet:
@@ -19,6 +21,7 @@ spring:
 app:
   kafka:
     topic: ${KAFKA_TOPIC:events}
+    send-timeout-seconds: ${KAFKA_SEND_TIMEOUT_SECONDS:10}
 
 minio:
   endpoint: http://${MINIO_HOST_LOCAL:localhost}:${MINIO_PORT:9000}
