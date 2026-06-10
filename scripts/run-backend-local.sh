@@ -38,6 +38,7 @@ if [[ -z "$KAFKA_IP" ]]; then
   exit 1
 fi
 
+ensure_java21
 (cd "$ROOT_DIR/backend" && mvn -q package -DskipTests)
 
 # Identifies only the line this script owns, so cleanup never touches a pre-existing
