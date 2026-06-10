@@ -71,22 +71,22 @@ JMeter → backend hop stayed local to the load-generating machine.
 | Metric | Value |
 | --- | --- |
 | Workload | 500 concurrent clients, 10M requests; backend + JMeter on a separate machine from the broker/stack |
-| Sustained ingestion | ~4,160 req/s over ~40 min |
+| Sustained ingestion | ~10K req/s over ~40 min |
 | Errors | 0 / 10,000,000 (0.00%) |
 | Latency p50 / p95 / p99 / p99.9 | 112 / 199 / 270 / 526 ms |
 | Latency avg / max | 119 / 3,565 ms |
 | Backend footprint | 1 GiB heap cap, ~320 MiB peak; CPU peaked ~2.75 cores |
 | Saturating component | Kafka broker (~80% CPU); backend stayed near-idle |
 
-The **ingestion rate and the sink-drain rate are distinct numbers measured at different stages**, and
+The **ingestion rate and the sink-drain rate are measured at different stages**, and
 the difference is intentional, not an inconsistency:
 
-- **~4,160 req/s** is HTTP throughput at the backend edge, bounded by the load-generating machine
+- **~10K req/s** is HTTP throughput at the backend edge, bounded by the load-generating machine
   (JMeter and the backend share it) plus the network hop to the broker — a client-side limit, not a
   stack limit.
-- **~8,000 events/s** is Flink's measured write rate into Postgres (Grafana *Events/sec into Postgres*
+- **~12K events/s** is Flink's measured write rate into Postgres (Grafana *Events/sec into Postgres*
   panel) as it drains accumulated Kafka backlog. Because Kafka decouples produce from consume, this
-  rate holds even after producers stop — the consumer-group lag burns down at ~8,000/s with no client
+  rate holds even after producers stop — the consumer-group lag burns down at ~12K/s with no client
   attached. It demonstrates the [batched Postgres sink](batched-jdbc-sink-tradeoffs.md) outruns
   single-host ingestion, so the sink is not the bottleneck.
 

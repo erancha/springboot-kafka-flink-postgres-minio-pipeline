@@ -17,12 +17,12 @@
 #   -h, --help
 #
 # Scope to specific services by naming them last (narrows --build and --logs; --stop is whole-stack):
-#   scripts/docker-helper.sh --build backend ui      # include: build just these two
-#   scripts/docker-helper.sh --logs -e flink-job     # include: follow errors from one service
+#   ./scripts/docker-helper.sh --build backend ui      # include: build just these two
+#   ./scripts/docker-helper.sh --logs -e flink-job     # include: follow errors from one service
 # To skip a service, list the others. Combine with -e/-w to filter by severity too — 
 # e.g. all warnings except Grafana, whose auth logs otherwise dominate -w:
-#   scripts/docker-helper.sh --logs -w $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
-#   scripts/docker-helper.sh --logs -w --since 1h $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
+#   ./scripts/docker-helper.sh --logs -w $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
+#   ./scripts/docker-helper.sh --logs -w --since 1h $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
