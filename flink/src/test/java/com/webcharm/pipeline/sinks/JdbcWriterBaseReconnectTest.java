@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.sql.BatchUpdateException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -58,6 +59,68 @@ class JdbcWriterBaseReconnectTest {
 
       // The retry must run against the reconnected statement supplied by the base class —
       // not stmt1, which the subclass would hold if it reached into the field directly.
+      assertSame(stmt2, writer.lastSeen.get());
+    }
+    verify(stmt2).executeUpdate();
+  }
+
+  /**
+   * Mirrors the structure pgjdbc 42.7.4 throws when the backend is terminated mid-batch (reproduced
+   * against PostgreSQL 16): a BatchUpdateException whose SQLState is the server error (57P01), with
+   * the 08006 transport error nested one level down via getNextException(). Classification walks the
+   * chain and retries rather than dead-lettering the rows.
+   */
+  @Test
+  void executeWithRetry_batchUpdateExceptionFromConnectionLoss_retries() throws Exception {
+    Connection conn1 = mock(Connection.class);
+    Connection conn2 = mock(Connection.class);
+    PreparedStatement stmt1 = mock(PreparedStatement.class);
+    PreparedStatement stmt2 = mock(PreparedStatement.class);
+    when(conn1.prepareStatement(anyString())).thenReturn(stmt1);
+    when(conn2.prepareStatement(anyString())).thenReturn(stmt2);
+    SQLException transport = new SQLException("An I/O error occurred while sending to the backend.", "08006");
+    SQLException serverError =
+        new SQLException("FATAL: terminating connection due to administrator command", "57P01");
+    serverError.setNextException(transport);
+    BatchUpdateException batch = new BatchUpdateException(
+        "Batch entry 0 was aborted. Call getNextException to see other errors in the batch.",
+        "57P01", new int[] {});
+    batch.setNextException(serverError);
+    batch.initCause(serverError);
+    when(stmt1.executeUpdate()).thenThrow(batch);
+
+    DataSource ds = mock(DataSource.class);
+    when(ds.getConnection()).thenReturn(conn1, conn2);
+
+    try (RecordingWriter writer = new RecordingWriter(ds)) {
+      writer.write("x");
+      assertSame(stmt2, writer.lastSeen.get());
+    }
+    verify(stmt2).executeUpdate();
+  }
+
+  /**
+   * Mirrors the structure pgjdbc 42.7.4 throws on a socket read timeout (reproduced against
+   * PostgreSQL 16): SQLState 08006 caused by a SocketTimeoutException. The 08 state classifies as
+   * transient, so the batch retries on a fresh connection.
+   */
+  @Test
+  void executeWithRetry_socketReadTimeout_retries() throws Exception {
+    Connection conn1 = mock(Connection.class);
+    Connection conn2 = mock(Connection.class);
+    PreparedStatement stmt1 = mock(PreparedStatement.class);
+    PreparedStatement stmt2 = mock(PreparedStatement.class);
+    when(conn1.prepareStatement(anyString())).thenReturn(stmt1);
+    when(conn2.prepareStatement(anyString())).thenReturn(stmt2);
+    when(stmt1.executeUpdate()).thenThrow(
+        new SQLException("An I/O error occurred while sending to the backend.", "08006",
+            new java.net.SocketTimeoutException("Read timed out")));
+
+    DataSource ds = mock(DataSource.class);
+    when(ds.getConnection()).thenReturn(conn1, conn2);
+
+    try (RecordingWriter writer = new RecordingWriter(ds)) {
+      writer.write("x");
       assertSame(stmt2, writer.lastSeen.get());
     }
     verify(stmt2).executeUpdate();

@@ -297,15 +297,31 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   }
 
   /**
-   * Returns true for SQLStates that indicate a transient condition worth retrying.
-   * 08xxx: connection errors; 40xxx: transaction rollback / deadlock; 57xxx: operator intervention.
-   * null SQLState is treated as transient (unknown — optimistically retry).
+   * Returns true for failures worth retrying. executeBatch() throws a BatchUpdateException
+   * (java.sql contract) whose underlying SQLExceptions are linked via getNextException(); a
+   * connection loss is also reachable through getCause(). Both chains are walked so a transient
+   * marker is honored wherever the driver places it, not only on the outermost exception.
+   *
+   * Transient: SQLState 08 (connection), 40 (rollback / deadlock), 57 (operator intervention),
+   * null (unknown — optimistically retry), or a bare SocketException / EOFException. Constraint and
+   * data errors (23 / 22) match none of these and stay permanent, so poison rows still reach the DLQ.
    */
-  private static boolean isTransient(SQLException e) {
-    String state = e.getSQLState();
-    if (state == null)
-      return true;
-    return state.startsWith("08") || state.startsWith("40") || state.startsWith("57");
+  private static boolean isTransient(Throwable e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t instanceof SQLException sqlEx) {
+        for (SQLException s = sqlEx; s != null; s = s.getNextException()) {
+          String state = s.getSQLState();
+          if (state == null
+              || state.startsWith("08") || state.startsWith("40") || state.startsWith("57")) {
+            return true;
+          }
+        }
+      }
+      if (t instanceof java.net.SocketException || t instanceof java.io.EOFException) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
