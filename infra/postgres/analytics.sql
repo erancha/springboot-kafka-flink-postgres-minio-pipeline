@@ -12,12 +12,6 @@ FROM processed_events
 GROUP BY event_type
 ORDER BY COUNT(*) DESC;
 
--- \echo '== [processed_events] Post-hoc: Retrieve latest processed records (computed at query time) =='
--- SELECT id, event_type, event_time, source, image_object_key, inserted_at
--- FROM processed_events
--- ORDER BY inserted_at DESC
--- LIMIT 20;
-
 \echo '== [processed_events] Post-hoc: Aggregate events by hour (computed at query time) =='
 SELECT date_trunc('hour', event_time) AS hour, event_type, COUNT(*)
 FROM processed_events

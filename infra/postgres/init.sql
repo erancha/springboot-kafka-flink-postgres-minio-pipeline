@@ -8,12 +8,6 @@ CREATE TABLE IF NOT EXISTS processed_events (
   inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_processed_events_type_time
-  ON processed_events (event_type, event_time DESC);
-
-CREATE INDEX IF NOT EXISTS idx_processed_events_inserted_at
-  ON processed_events (inserted_at DESC);
-
 CREATE TABLE IF NOT EXISTS event_type_counts_agg (
   window_start TIMESTAMPTZ NOT NULL,
   window_end TIMESTAMPTZ NOT NULL,

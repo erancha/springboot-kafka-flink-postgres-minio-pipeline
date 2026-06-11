@@ -27,180 +27,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "⚠️ **Keep the refresh at 1m or slower.** These panels run aggregate queries over large, growing Postgres tables (e.g. raw `processed_events`, hundreds of MB); refreshing faster makes the queries overrun the interval and pile up, and Grafana cancels them. For fast (15s) live metrics use the **Pipeline Health** dashboard instead — it queries Prometheus, not Postgres."
-      }
-    },
-    {
-      "id": 1,
-      "type": "barchart",
-      "title": "Events by type — raw vs Flink-aggregated",
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 3
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres-warehouse"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawSql": "SELECT r.event_type AS type,\n       r.cnt::bigint AS raw,\n       COALESCE(a.cnt, 0)::bigint AS aggregated\nFROM (SELECT event_type, COUNT(*) AS cnt FROM processed_events GROUP BY event_type) r\nLEFT JOIN (SELECT event_type, SUM(event_count) AS cnt FROM event_type_counts_agg GROUP BY event_type) a\n  ON a.event_type = r.event_type\nORDER BY r.event_type;"
-        }
-      ],
-      "options": {
-        "xField": "type",
-        "orientation": "horizontal",
-        "showValue": "always",
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "decimals": 0
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 7,
-      "type": "timeseries",
-      "title": "DATA events per 5m window — raw vs Flink-aggregated",
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 3
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres-warehouse"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "time_series",
-          "rawSql": "SELECT to_timestamp(floor(extract(epoch FROM event_time) / 300) * 300) AS time,\n       COUNT(*)::bigint AS \"raw\"\nFROM processed_events\nWHERE event_type = 'DATA' AND $__timeFilter(event_time)\nGROUP BY 1\nORDER BY 1;"
-        },
-        {
-          "refId": "B",
-          "format": "time_series",
-          "rawSql": "SELECT window_start AS time,\n       event_count::bigint AS \"aggregated\"\nFROM event_type_counts_agg\nWHERE event_type = 'DATA' AND $__timeFilter(window_start)\nORDER BY 1;"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "showPoints": "always",
-            "pointSize": 6,
-            "lineWidth": 0
-          },
-          "unit": "none",
-          "decimals": 0
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "aggregated"
-            },
-            "properties": [
-              {
-                "id": "custom.pointSize",
-                "value": 14
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "rgba(255, 165, 0, 0.35)"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "raw"
-            },
-            "properties": [
-              {
-                "id": "custom.pointSize",
-                "value": 5
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 3,
-      "type": "timeseries",
-      "title": "Events by hour (by type)",
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 12
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres-warehouse"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "time_series",
-          "interval": "1h",
-          "intervalMs": 3600000,
-          "rawSql": "SELECT $__timeGroupAlias(event_time, '1h'),\n       COUNT(*)::bigint AS value,\n       event_type AS metric\nFROM processed_events\nWHERE $__timeFilter(event_time)\nGROUP BY 1, 3\nORDER BY 1;"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "showPoints": "always",
-            "pointSize": 6,
-            "lineWidth": 0
-          },
-          "unit": "none",
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single"
-        }
+        "content": "📊 This dashboard reads only the Flink **pre-aggregated** tables (`event_type_counts_agg`, `image_size_buckets_agg`), which hold one row per closed window and stay small regardless of how much data is ingested — so these queries stay cheap as the pipeline scales. For live (15s) pipeline metrics, use the **Pipeline Health** dashboard, which queries Prometheus."
       }
     },
     {
@@ -208,10 +35,10 @@
       "type": "timeseries",
       "title": "Events per 5m window (Flink pre-aggregated)",
       "gridPos": {
-        "h": 10,
+        "h": 18,
         "w": 12,
-        "x": 12,
-        "y": 12
+        "x": 0,
+        "y": 3
       },
       "datasource": {
         "type": "postgres",
@@ -249,8 +76,8 @@
       "gridPos": {
         "h": 9,
         "w": 12,
-        "x": 0,
-        "y": 22
+        "x": 12,
+        "y": 3
       },
       "datasource": {
         "type": "postgres",
@@ -285,7 +112,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 22
+        "y": 12
       },
       "datasource": {
         "type": "postgres",
@@ -314,40 +141,6 @@
         "tooltip": {
           "mode": "single"
         }
-      }
-    },
-    {
-      "id": 2,
-      "type": "table",
-      "title": "Latest processed records (20)",
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 31
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres-warehouse"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawSql": "SELECT id, event_type, event_time, image_object_key, inserted_at\nFROM processed_events\nORDER BY inserted_at DESC\nLIMIT 20;"
-        }
-      ],
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto"
-          }
-        },
-        "overrides": []
       }
     }
   ]
