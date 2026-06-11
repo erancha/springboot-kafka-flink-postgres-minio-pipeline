@@ -1,0 +1,112 @@
+---
+name: diagnosing-kafka-flink-postgres-load-tests
+description: Use when a load test of this Kafka->Flink->Postgres/MinIO event pipeline shows degraded throughput, rising Kafka consumer lag, growing busy time, slow checkpoints, run-to-run regression, or DLQ growth, and the Docker stack is still up to inspect. Triggers include "second run was slower/busier", "consumer lag spiked", "checkpoints got slow", "events aren't draining".
+---
+
+# Diagnosing Kafka -> Flink -> Postgres Load Tests
+
+## Overview
+
+Turn a live (still-running) Docker stack into a textual diagnosis of a load test, instead of
+reading Grafana screenshots. The harness collects evidence; **you** correlate it. The dynamic
+part is the correlation — the failure mode is rarely the same twice, so this skill gives you the
+evidence bundle plus a map from symptom to likely cause and the next probe.
+
+**Core principle:** a load test that *completes* can still be unhealthy. Same end-to-end
+throughput with higher lag / busy time / checkpoint duration means a queue got deeper, not that
+nothing was wrong. Find what got slower and why.
+
+## Prerequisite
+
+The stack must be up (`./scripts/start.sh`). Every script reads from the running containers and
+Prometheus; none of them start, stop, or mutate the stack.
+
+## Step 1 — collect the evidence bundle
+
+```bash
+.claude/skills/diagnosing-kafka-flink-postgres-load-tests/scripts/diagnose.sh --since 3h
+```
+
+Prints four sections: stack status, **run timeline + per-run metrics**, **Postgres table status**,
+and **recent error signatures**. Widen `--since` if the run is older than 3h.
+
+The run timeline auto-detects each load run and reports, per run: throughput, Kafka lag, Flink
+pending, busy/backpressure ms/s, checkpoint duration, MinIO upload time, DLQ + retryable rates, and
+the **window delta** of restarts / failed / completed checkpoints. A counter delta > 0 means it
+*happened during that run* — distinguishing a real fault from a startup-leftover counter value.
+
+## Metric glossary — what each row measures, and where
+
+Every metric is one PromQL series in `prom_snapshot.py`; "where" is the point in the pipeline it is
+sampled, which disambiguates the name (e.g. throughput is at the **sink output to Postgres**, not
+ingestion into Kafka).
+
+| Metric | What it measures | Where in the pipeline |
+|---|---|---|
+| `tput_data rec/s` | DATA rows committed to Postgres per second (`numRecordsIn` of the `data_to_postgres` sink) | Flink → Postgres, sink input |
+| `tput_image rec/s` | IMAGE rows committed to Postgres per second (`numRecordsIn` of the `image_to_postgres` sink) | Flink → Postgres, sink input |
+| `kafka_lag` | Committed consumer lag = latest offset − committed offset on `events` (from kafka-exporter) | Kafka's view of how far Flink's *committed* offset trails the producer |
+| `flink_pending` | Records fetched from Kafka but not yet processed (`pendingRecords`); reported only while the source is RUNNING | Flink Kafka source, internal backlog |
+| `busy ms/s` | ms per second each task was actively processing, **including blocking I/O** like a JDBC batch (0–1000, avg across tasks) | All Flink operators |
+| `backpressure ms/s` | ms per second a task stalled waiting on a downstream buffer (0–1000) | All Flink operators |
+| `ckpt_dur ms` | Wall-clock duration of the last completed checkpoint | Flink JobManager (waits on in-flight sink flush) |
+| `minio_upload ms` | Mean per-image upload latency (`upload_nanos / uploads`) | IMAGE URL-enrichment path → MinIO |
+| `dlq rec/s` | Records routed to the dead-letter sink per second, by stage | Flink dead-letter path |
+| `retryable/s` | Retryable enrichment failures per second (URL fetch / MinIO) | IMAGE enrichment |
+| `restarts` (counter) | Cumulative Flink job restarts; **window delta** = restarts during the run | Flink JobManager |
+| `failed_ckpt` (counter) | Cumulative failed checkpoints; window delta = failures during the run | Flink JobManager |
+| `completed_ckpt` (counter) | Cumulative completed checkpoints; window delta = healthy progress during the run | Flink JobManager |
+
+## Step 2 — read the signals
+
+```
+                       errors during a run window?
+   restarts/failed_ckpt delta > 0 ──yes──> real fault: pull flink-* logs + DLQ; check whether a
+              │                             slow batch tripped the JDBC timeout budget (see below)
+              no
+              │
+   degraded but throughput ~unchanged?
+   busy HIGH + backpressure ~0 + lag rising ──yes──> sink/DB-bound (operator blocks inside JDBC).
+              │                                       Go to Postgres table status.
+              no ──> source/producer-bound: check backend rate, Kafka controller health.
+```
+
+| Signal in the bundle | Likely cause | Next probe |
+|---|---|---|
+| Run N slower than identical run N-1 (higher lag/busy/ckpt), same throughput, zero error deltas | Table never truncated between runs; heap+indexes outgrow `shared_buffers`, random-UUID PK scatters inserts → cold-page I/O | Postgres table status: `total`/`indexes` size vs `shared_buffers`. Truncate between runs to get comparable numbers |
+| busy ms/s high, backpressure ~0, lag climbing | Sink blocks inside a slow JDBC batch (busy counts blocking I/O); no upstream backpressure signal | Postgres size + `last_autovacuum`; was autovacuum/analyze competing during the run |
+| checkpoint duration climbing across the run | Checkpoint waits on in-flight sink flush; same root as slow inserts | Postgres insert latency / table size |
+| postgres log `connection to client lost`, clustered in the slow run | A degraded batch crossed `socketTimeout`/`queryTimeout` (default 20s, `JDBC_*_TIMEOUT_SECS`); driver dropped the socket → sink reconnect+retry | `flink/.../sinks/JdbcWriterBase.java` retry/classification; confirm a batch can exceed the timeout under the run's insert latency |
+| kafka log `controller event queue overloaded` / `REQUEST_TIMED_OUT`, bursts of `NotCoordinator` / `CoordinatorLoadInProgress` offset-commit WARNs | Single-node KRaft broker+controller starved under load; offset commits are retriable and ride the next checkpoint — noise unless paired with restarts | Confirm restarts delta = 0; if so, benign. Otherwise raise Kafka memory/heartbeat headroom |
+| dlq rec/s or retryable/s > 0 | Permanent failures (poison rows) or enrichment retries | DLQ-by-stage breakdown; for IMAGE, MinIO upload time + allowlist/SSRF 403s |
+| MinIO upload time spiking | URL-fetch enrichment slow or MinIO saturated | MinIO container memory/health; upstream URL latency |
+
+## Step 3 — knobs (where they live)
+
+- **Test hygiene first.** `TRUNCATE processed_events, ...` before each measured run (see
+  `./scripts/sql-helper.sh -h`). Without it, run N is slower than run N-1 by construction.
+- `.env`: `PIPELINE_PARALLELISM` (couples topic partitions + Flink slots + Postgres connections),
+  `JDBC_BATCH_SIZE`, `JDBC_*_TIMEOUT_SECS` / `JDBC_MAX_ATTEMPTS` (retry budget must stay under the
+  60s checkpoint timeout), `FLINK_TM_MEMORY`.
+- `scripts/docker-compose.yml`: Postgres `shared_buffers` / `max_wal_size` / `max_connections`,
+  Kafka and Postgres memory caps.
+- Schema (real insert-throughput hardening for an unbounded table): monotonic PK instead of random
+  UUIDv4, fewer secondary indexes during load, or an `UNLOGGED` table for throwaway demos.
+
+## Ad-hoc PromQL
+
+When the bundle raises a new question, query Prometheus directly instead of guessing:
+
+```bash
+S=.claude/skills/diagnosing-kafka-flink-postgres-load-tests/scripts/prom_snapshot.py
+python3 $S --query 'sum(kafka_consumergroup_lag{consumergroup="flink-processor"})'
+python3 $S --range 'avg(flink_taskmanager_job_task_busyTimeMsPerSecond)' --since 1800
+```
+
+## Common mistakes
+
+- **Calling a completed run healthy.** Check lag/busy/ckpt depth, not just "it finished".
+- **Comparing runs without truncating between them.** The later run is slower by construction.
+- **Treating `NotCoordinator` offset-commit WARNs as failures.** They are retriable and benign
+  unless a restart delta accompanies them.
+- **Reading `max()` counter values as per-run.** Use the window *delta* the timeline reports.
