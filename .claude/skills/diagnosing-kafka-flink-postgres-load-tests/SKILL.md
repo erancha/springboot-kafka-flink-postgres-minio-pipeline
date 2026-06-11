@@ -57,7 +57,28 @@ ingestion into Kafka).
 | `failed_ckpt` (counter) | Cumulative failed checkpoints; window delta = failures during the run | Flink JobManager |
 | `completed_ckpt` (counter) | Cumulative completed checkpoints; window delta = healthy progress during the run | Flink JobManager |
 
-## Step 2 — read the signals
+## Step 2 — tabulate the runs first
+
+Before correlating anything, transcribe the per-run metrics from the bundle into a single
+comparison table — one column per run, one row per metric — so run-to-run drift is visible at a
+glance instead of buried in the separate per-run text blocks. **Label each run column with its
+start–end time in parentheses**; that window is what every counter delta and every Postgres/Kafka
+log line gets correlated against, so it must travel with the numbers.
+
+| Metric (avg) | Run 1 (17:23:43–17:42:43) | Run 2 (18:02:43–18:21:13) | Run 3 (18:43:13–19:06:43) |
+|---|---|---|---|
+| tput_data rec/s | … | … | … |
+| kafka_lag | … | … | … |
+| flink_pending | … | … | … |
+| busy ms/s | … | … | … |
+| ckpt_dur ms | … | … | … |
+| restarts / failed_ckpt delta | … | … | … |
+
+Read the table top-to-bottom for the trend — is a later run slower (higher lag/busy/ckpt) at the
+*same* throughput? — before dropping into the symptom map. The timestamps in the headers are the
+windows you hand to every log and Prometheus probe that follows.
+
+## Step 3 — read the signals
 
 ```
                        errors during a run window?
@@ -81,7 +102,7 @@ ingestion into Kafka).
 | dlq rec/s or retryable/s > 0 | Permanent failures (poison rows) or enrichment retries | DLQ-by-stage breakdown; for IMAGE, MinIO upload time + allowlist/SSRF 403s |
 | MinIO upload time spiking | URL-fetch enrichment slow or MinIO saturated | MinIO container memory/health; upstream URL latency |
 
-## Step 3 — knobs (where they live)
+## Step 4 — knobs (where they live)
 
 - **Test hygiene first.** `TRUNCATE processed_events, ...` before each measured run (see
   `./scripts/sql-helper.sh -h`). Without it, run N is slower than run N-1 by construction.
@@ -110,3 +131,10 @@ python3 $S --range 'avg(flink_taskmanager_job_task_busyTimeMsPerSecond)' --since
 - **Treating `NotCoordinator` offset-commit WARNs as failures.** They are retriable and benign
   unless a restart delta accompanies them.
 - **Reading `max()` counter values as per-run.** Use the window *delta* the timeline reports.
+- **Mixing UTC and local time when correlating.** Container service logs — the *recent error
+  signatures* section, and any raw `docker logs` / Flink / Kafka / Postgres output — are timestamped
+  in **UTC**, while the run-timeline windows, `docker ps` uptimes, and your shell `date` are
+  **local**. Convert before matching a log line to a run window: a Flink `18:13:45` log is
+  `21:13:45` in a UTC+3 local timeline (and would otherwise look like it predates a run it was
+  actually inside). Compute the offset once — `date` against any fresh UTC log line — and apply it
+  to every error-signature timestamp.

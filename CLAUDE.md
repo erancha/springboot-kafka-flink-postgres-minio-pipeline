@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-A real-time data pipeline exercise demonstrating end-to-end event streaming. Users submit events through a React UI; events flow through Spring Boot → Kafka → Flink → MinIO (images) or PostgreSQL (data).
+A production-grade real-time data pipeline built to a senior-to-staff engineering bar — the
+architecture, fault-tolerance guarantees, and operability are the point, not just a working data
+path. Users submit events through a React UI; events flow through Spring Boot → Kafka → Flink →
+MinIO (images) or PostgreSQL (data).
+
+Treat data durability, recoverability, and observability as first-class requirements — never trade
+them away for throughput.
 
 ## Common Commands
 

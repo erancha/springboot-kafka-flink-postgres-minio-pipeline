@@ -92,6 +92,8 @@ services:
   # Kafka bootstrap job to create the events and DLQ topics before producers/consumers begin exchanging events.
   # Retention is set via --alter (not only --create --config) so it is enforced on every startup, including
   # when the topic already exists on the persistent kafka_data volume. events: 4 hours; DLQ: 7 days.
+  # The trailing --describe (group coordinator-warmup) pre-creates __consumer_offsets and loads its
+  # coordinator, so Flink's first offset commit doesn't hit CoordinatorNotAvailable.
   kafka-init:
     image: apache/kafka:3.7.1
     depends_on:
@@ -100,7 +102,8 @@ services:
     entrypoint: ["/bin/sh", "-c", "
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions ${PIPELINE_PARALLELISM} --replication-factor 1 &&
       /opt/kafka/bin/kafka-configs.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --alter --entity-type topics --entity-name ${KAFKA_TOPIC} --add-config retention.ms=14400000 &&
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000"]
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000 &&
+      (/opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --describe --group coordinator-warmup 1>/dev/null 2>&1 || true)"]
 
   # PostgreSQL simulating a data-warehouse-like analytics database for processed DATA/IMAGE events.
   postgres:
@@ -334,7 +337,11 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-    command: ["/bin/bash", "-lc", "until curl -fsS http://flink-jobmanager:8081/overview >/dev/null; do echo 'waiting for flink-jobmanager...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
+    # Submit only once the cluster can actually run the job: wait until registered task slots reach
+    # the job parallelism, not merely until the JobManager REST answers. Submitting against a
+    # JobManager whose TaskManager has not yet registered its slots races the scheduler into a
+    # startup restart.
+    command: ["/bin/bash", "-lc", "until s=$$(curl -fsS http://flink-jobmanager:8081/overview 2>/dev/null | grep -oE 'slots-total[^0-9]*[0-9]+' | tr -cd '0-9'); [ $${s:-0} -ge ${PIPELINE_PARALLELISM} ]; do echo 'waiting for task slots to register...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
 
   # React UI (served via Nginx) used to submit IMAGE/DATA events to the backend API.
   ui:
