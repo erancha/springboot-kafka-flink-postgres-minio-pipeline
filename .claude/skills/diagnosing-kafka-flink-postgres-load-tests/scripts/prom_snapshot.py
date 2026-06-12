@@ -43,6 +43,10 @@ METRICS = {
 # separates one run from the next.
 ACTIVE_FLOOR = 50
 RUN_GAP_SECS = 180
+# A single uninterrupted run has no later run to diff against, so the run-to-run trend is invisible.
+# Splitting that one run into this many equal time slices and reporting them as runs restores the
+# trend — surfacing intra-run drift (e.g. insert latency climbing as the table grows) a lone summary hides.
+SLICE_COUNT = 10
 
 
 def prom(base, path, params):
@@ -82,6 +86,14 @@ def detect_runs(data):
     return runs
 
 
+def slice_run(a, b, n):
+    """Split one continuous run [a, b] into n equal-duration slices for intra-run trend analysis."""
+    if b - a <= 0:
+        return [(a, b)]
+    step = (b - a) / n
+    return [(int(a + i * step), int(a + (i + 1) * step)) for i in range(n)]
+
+
 def window_stat(series, a, b, kind):
     pts = [(t, v) for t, v in series if a <= t <= b and not math.isnan(v)]
     if not pts:
@@ -100,17 +112,26 @@ def snapshot(args):
             for name, (expr, _) in METRICS.items()}
 
     runs = detect_runs(data)
+    n_detected = len(runs)
+    sliced = n_detected == 1
+    if sliced:
+        runs = slice_run(*runs[0], SLICE_COUNT)
+
     print(f"# Prometheus snapshot  {base}")
     print(f"# window: last {args.since}s  ({fmt(start)}-{fmt(end)} local)  step={args.step}s")
-    print(f"# detected {len(runs)} run(s)")
+    print(f"# detected {n_detected} run(s)")
+    if sliced:
+        print(f"# one continuous run split into {len(runs)} equal slices for intra-run trend")
     print("# metric definitions: see SKILL.md 'Metric glossary'\n")
 
     if not runs:
         print("No active runs in window. Widen --since, or confirm a load test actually ran.")
         return
 
+    label = "SLICE" if sliced else "RUN"
+    total = f"/{len(runs)}" if sliced else ""
     for i, (a, b) in enumerate(runs, 1):
-        print(f"=== RUN {i}  {fmt(a)}-{fmt(b)} local  ({b - a}s active) ===")
+        print(f"=== {label} {i}{total}  {fmt(a)}-{fmt(b)} local  ({b - a}s) ===")
         for name, (_, kind) in METRICS.items():
             s = window_stat(data[name], a, b, kind)
             if s is None:
@@ -122,7 +143,11 @@ def snapshot(args):
                 print(f"  {name:<20} peak/avg        : {s[1]:10.1f} / {s[2]:10.1f}")
         print()
 
-    if len(runs) >= 2:
+    if sliced:
+        print("# Read slices top-to-bottom: rising lag/busy/ckpt across slices at the SAME throughput")
+        print("# is intra-run degradation (e.g. insert latency climbing as the table grows) the single")
+        print("# run would otherwise hide. restarts/failed_ckpt delta should stay 0 in every slice.")
+    elif len(runs) >= 2:
         print("# Compare runs: a later run that is SLOWER (higher lag/busy/ckpt) at the SAME")
         print("# throughput, with restarts/failed_ckpt delta = 0, points downstream (sink/DB),")
         print("# not at the pipeline. Correlate with Postgres table growth (diagnose.sh does this).")

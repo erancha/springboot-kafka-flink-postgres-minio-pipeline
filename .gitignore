@@ -8,6 +8,10 @@
 node_modules/
 org/
 
+# Python bytecode (e.g. from the diagnosis skill's scripts)
+__pycache__/
+*.pyc
+
 docs/superpowers/
 docs/*-code-eval-*.md
 docs/batched-jdbc-sink-tradeoffs.md

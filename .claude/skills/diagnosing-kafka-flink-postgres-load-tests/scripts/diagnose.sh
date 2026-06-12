@@ -81,5 +81,6 @@ scan() { # $1=service  $2=egrep pattern
 }
 scan postgres            'fatal|cancel|deadlock|could not|timeout|terminat'
 scan kafka               'overloaded|request_timed_out|notcoordinator|coordinatorload|error'
-scan flink-taskmanager   'switched from running to failed|exception|restored|checkpoint .*expired'
-scan flink-jobmanager    'restart|recover|checkpoint .*expired|exception'
+scan flink-taskmanager   'switched from running to failed|exception|restored|checkpoint .*expired|thread starvation|clock leap'
+scan flink-jobmanager    'restart|recover|checkpoint .*expired|exception|failed to (trigger|complete)'
+scan backend             'error|exception|fail'

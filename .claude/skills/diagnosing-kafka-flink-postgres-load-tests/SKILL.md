@@ -23,28 +23,44 @@ Prometheus; none of them start, stop, or mutate the stack.
 
 ## Step 1 — collect the evidence bundle
 
+Default the lookback to **3h**. If the skill was invoked with an explicit duration
+(e.g. `/diagnosing-kafka-flink-postgres-load-tests 5h`, or `90m`), pass that as `--since` instead —
+do not silently keep 3h when the user named a window.
+
 ```bash
-.claude/skills/diagnosing-kafka-flink-postgres-load-tests/scripts/diagnose.sh --since 3h
+.claude/skills/diagnosing-kafka-flink-postgres-load-tests/scripts/diagnose.sh --since 3h   # or the duration the skill was given
 ```
 
 Prints four sections: stack status, **run timeline + per-run metrics**, **Postgres table status**,
-and **recent error signatures**. Widen `--since` if the run is older than 3h.
+and **recent error signatures**.
+
+Detection is **windowed**: it only sees runs inside `[now − since, now]`, so any run that ended
+before the window started is invisible — it does not scan from the beginning of history. The bundle
+prints `window: … detected N run(s)`; if you expected more runs than that, the earlier ones fell
+outside the window — widen `--since` (e.g. to cover the stack's full uptime from `docker ps`) and
+re-run.
 
 The run timeline auto-detects each load run and reports, per run: throughput, Kafka lag, Flink
 pending, busy/backpressure ms/s, checkpoint duration, MinIO upload time, DLQ + retryable rates, and
 the **window delta** of restarts / failed / completed checkpoints. A counter delta > 0 means it
 *happened during that run* — distinguishing a real fault from a startup-leftover counter value.
 
+When the window holds a single uninterrupted run, it is auto-split into 10 equal time slices
+reported as `SLICE 1/10 … 10/10`. A lone run has no later run to diff against, so this restores the
+trend view — intra-run drift (e.g. insert latency climbing as the table grows) shows up as rising
+lag/busy/ckpt across slices at the same throughput. Narrow `--since` to bracket one run if the
+window caught several and you want the per-slice view of just one.
+
 ## Metric glossary — what each row measures, and where
 
 Every metric is one PromQL series in `prom_snapshot.py`; "where" is the point in the pipeline it is
-sampled, which disambiguates the name (e.g. throughput is at the **sink output to Postgres**, not
-ingestion into Kafka).
+sampled, which disambiguates the name (e.g. throughput is sampled at the **Postgres-writing sink**,
+not at Kafka ingestion — see `tput_data`).
 
 | Metric | What it measures | Where in the pipeline |
 |---|---|---|
-| `tput_data rec/s` | DATA rows committed to Postgres per second (`numRecordsIn` of the `data_to_postgres` sink) | Flink → Postgres, sink input |
-| `tput_image rec/s` | IMAGE rows committed to Postgres per second (`numRecordsIn` of the `image_to_postgres` sink) | Flink → Postgres, sink input |
+| `tput_data rec/s` | DATA records/s *entering* the `data_to_postgres` sink (`rate(numRecordsIn)`). The write end, **not** Kafka ingestion. Tracks the Postgres write rate closely (the sink backpressures when Postgres is slow) but counts records the sink *received*, not rows confirmed committed — an in-flight JDBC batch is already counted | Flink sink input, just before the JDBC write |
+| `tput_image rec/s` | Same as `tput_data`, for the `image_to_postgres` sink (`rate(numRecordsIn)`) | Flink sink input, just before the JDBC write |
 | `kafka_lag` | Committed consumer lag = latest offset − committed offset on `events` (from kafka-exporter) | Kafka's view of how far Flink's *committed* offset trails the producer |
 | `flink_pending` | Records fetched from Kafka but not yet processed (`pendingRecords`); reported only while the source is RUNNING | Flink Kafka source, internal backlog |
 | `busy ms/s` | ms per second each task was actively processing, **including blocking I/O** like a JDBC batch (0–1000, avg across tasks) | All Flink operators |
@@ -78,6 +94,10 @@ Read the table top-to-bottom for the trend — is a later run slower (higher lag
 *same* throughput? — before dropping into the symptom map. The timestamps in the headers are the
 windows you hand to every log and Prometheus probe that follows.
 
+When the bundle reports `SLICE n/10` instead of runs (a single continuous run), tabulate the 10
+slices as the columns and read left-to-right — same method, finer grain: rising lag/busy/ckpt across
+slices at flat throughput is the table deepening its own backlog within one run.
+
 ## Step 3 — read the signals
 
 ```
@@ -97,6 +117,7 @@ windows you hand to every log and Prometheus probe that follows.
 | Run N slower than identical run N-1 (higher lag/busy/ckpt), same throughput, zero error deltas | Table never truncated between runs; heap+indexes outgrow `shared_buffers`, random-UUID PK scatters inserts → cold-page I/O | Postgres table status: `total`/`indexes` size vs `shared_buffers`. Truncate between runs to get comparable numbers |
 | busy ms/s high, backpressure ~0, lag climbing | Sink blocks inside a slow JDBC batch (busy counts blocking I/O); no upstream backpressure signal | Postgres size + `last_autovacuum`; was autovacuum/analyze competing during the run |
 | checkpoint duration climbing across the run | Checkpoint waits on in-flight sink flush; same root as slow inserts | Postgres insert latency / table size |
+| flink-taskmanager log `Thread starvation or clock leap detected` (Hikari housekeeper delta far exceeds its interval), often paired with a jobmanager checkpoint `AskTimeoutException` | TaskManager JVM starved (long GC / CPU contention under load) or the WSL2 VM was paused (host sleep / memory pressure); the checkpoint trigger RPC then times out because the TM thread can't answer. The checkpoint failure is a symptom, not the root — and this can be an environment artifact, not a pipeline bug | `FLINK_TM_MEMORY` + TM GC pauses; host/VM memory and whether the VM was paused; confirm restarts delta = 0 (Flink usually absorbs a single occurrence) |
 | postgres log `connection to client lost`, clustered in the slow run | A degraded batch crossed `socketTimeout`/`queryTimeout` (default 20s, `JDBC_*_TIMEOUT_SECS`); driver dropped the socket → sink reconnect+retry | `flink/.../sinks/JdbcWriterBase.java` retry/classification; confirm a batch can exceed the timeout under the run's insert latency |
 | kafka log `controller event queue overloaded` / `REQUEST_TIMED_OUT`, bursts of `NotCoordinator` / `CoordinatorLoadInProgress` offset-commit WARNs | Single-node KRaft broker+controller starved under load; offset commits are retriable and ride the next checkpoint — noise unless paired with restarts | Confirm restarts delta = 0; if so, benign. Otherwise raise Kafka memory/heartbeat headroom |
 | dlq rec/s or retryable/s > 0 | Permanent failures (poison rows) or enrichment retries | DLQ-by-stage breakdown; for IMAGE, MinIO upload time + allowlist/SSRF 403s |
