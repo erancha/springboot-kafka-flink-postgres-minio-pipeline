@@ -5,6 +5,7 @@ import com.webcharm.backend.storage.ImageUploadService;
 import com.webcharm.backend.model.EventRequest;
 import com.webcharm.backend.model.EventResponse;
 import com.webcharm.backend.model.EventType;
+import com.webcharm.backend.util.UuidV7;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.net.URI;
@@ -63,7 +64,7 @@ public class EventController {
     } else {
       payloadSchemaValidator.validate(request.getPayload());
     }
-    UUID id = UUID.randomUUID();
+    UUID id = UuidV7.next();
     Instant now = Instant.now();
     eventProducer.send(request.toEventMap(id, now, "ui"));
     return new EventResponse(id.toString(), now.toString());
@@ -137,7 +138,7 @@ public class EventController {
   @PostMapping(path = "/events/image-upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public EventResponse publishImageUpload(@RequestParam("file") MultipartFile file) throws IOException {
     validateImageFile(file);
-    UUID id = UUID.randomUUID();
+    UUID id = UuidV7.next();
     Instant now = Instant.now();
     log.info("image upload received: id={} filename={} contentType={} size={}B",
         id, file.getOriginalFilename(), file.getContentType(), file.getSize());
