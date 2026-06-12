@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Docker Compose helper for the local stack. One entry point for the thin compose ops.
 # Usage: docker-helper.sh <command> [args]
+#   --up [--build] [--recreate] [service...]
+#       Start the stack, or only the named services. --build rebuilds images first; --recreate
+#       forces container recreation. Rebuilding flink-job also recycles the JobManager/TaskManager
+#       so the prior job submission is cleared before the new one is resubmitted.
 #   --build [service...]
 #       Build all stack images, or only the named services.
-#   --stop [--keep-volumes] [--prune-dangling-images]
-#       Stop the stack. Default removes volumes; --keep-volumes preserves data.
-#       --prune-dangling-images also purges dangling images/volumes (ignored with --keep-volumes).
+#   --stop [--keep-volumes] [--prune[=images|volumes|both]]
+#       Stop the whole stack. Default removes this stack's volumes; --keep-volumes preserves them.
+#       --prune additionally clears this project's dangling images and/or volumes (bare --prune =
+#       both), label-scoped to this compose project so other stacks are never touched. --prune with
+#       volumes/both is rejected together with --keep-volumes.
 #   --logs [-e|--errors|-w|--warnings] [--grep <pat>] [--since <dur>] [--sort time [--order asc|desc]] [service...]
 #       Follow logs live (last 200 lines). -e filters to ERROR/EXCEPTION/FATAL; -w widens that to
 #       also include WARN; --grep <pat> filters to a case-insensitive regex; --since limits to
@@ -30,7 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || -z "${1:-}" ]]; then
-  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'
   [[ -z "${1:-}" ]] && exit 1
   exit 0
 fi
@@ -41,16 +47,79 @@ do_build() {
   compose build "$@"
 }
 
+# Compose's default project name: the sanitized basename of the project dir (lowercase, only
+# a-z0-9_-). Used to label-scope prune so it only ever touches THIS stack's images/volumes.
+compose_project() {
+  basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'
+}
+
+# Starts the stack, or only the named services. Rebuilding flink-job recycles the
+# JobManager/TaskManager: the JobManager keeps the prior submission running across a plain recreate,
+# so the cluster pair must be recreated to clear the old job before the rebuilt one is resubmitted.
+do_up() {
+  local build=false recreate=false
+  local -a targets=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --build)    build=true ;;
+      --recreate) recreate=true ;;
+      -*)         echo "Unknown --up option '$1'" >&2; exit 1 ;;
+      *)          targets+=("$1") ;;
+    esac
+    shift
+  done
+
+  if printf '%s\n' "${targets[@]+"${targets[@]}"}" | grep -qx flink-job; then
+    targets=(flink-jobmanager flink-taskmanager "${targets[@]}")
+    recreate=true
+  fi
+
+  # Plain `up -d` still builds images absent on first run, so stage the schema either way.
+  stage_payload_schema
+
+  local -a args=(up -d)
+  if $build; then args+=(--build); fi
+  if $recreate; then args+=(--force-recreate); fi
+  compose "${args[@]}" "${targets[@]+"${targets[@]}"}"
+  compose ps
+}
+
+# Stops the whole stack. Default removes this stack's volumes (down -v); --keep-volumes preserves
+# them. --prune additionally clears this project's dangling images and/or volumes, label-scoped to
+# the compose project so other running stacks are never touched.
 do_stop() {
-  if [[ "${1:-}" == "--keep-volumes" ]]; then
+  local keep=false prune=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --keep-volumes) keep=true ;;
+      --prune)        prune=both ;;
+      --prune=*)      prune="${1#*=}" ;;
+      *)              echo "Unknown --stop option '$1'" >&2; exit 1 ;;
+    esac
+    shift
+  done
+
+  case "$prune" in
+    ""|images|volumes|both) ;;
+    *) echo "--prune expects images|volumes|both (bare --prune = both)" >&2; exit 1 ;;
+  esac
+  if $keep && [[ "$prune" == volumes || "$prune" == both ]]; then
+    echo "--keep-volumes cannot combine with --prune=volumes|both — it would delete the kept volumes." >&2
+    exit 1
+  fi
+
+  if $keep; then
     compose down
   else
     compose down -v --remove-orphans
-    if [[ "${1:-}" == "--prune-dangling-images" ]]; then
-      docker image prune -f
-      docker volume prune -f
-    fi
   fi
+
+  local -a scope=(--filter "label=com.docker.compose.project=$(compose_project)")
+  case "$prune" in
+    images)  docker image  prune -f "${scope[@]}" ;;
+    volumes) docker volume prune -f "${scope[@]}" ;;
+    both)    docker image  prune -f "${scope[@]}"; docker volume prune -f "${scope[@]}" ;;
+  esac
 }
 
 # Filtering and follow-vs-snapshot are independent: the severity presets (-e errors, -w warnings
@@ -130,9 +199,10 @@ require_docker
 mode="$1"
 shift
 case "$mode" in
+  --up)         do_up "$@" ;;
   --build)      do_build "$@" ;;
   --stop)       do_stop "$@" ;;
   --logs)       do_logs "$@" ;;
   --kafka-disk) do_kafka_disk ;;
-  *) echo "Unknown command: $mode (expected --build | --stop | --logs | --kafka-disk; see -h)" >&2; exit 1 ;;
+  *) echo "Unknown command: $mode (expected --up | --build | --stop | --logs | --kafka-disk; see -h)" >&2; exit 1 ;;
 esac

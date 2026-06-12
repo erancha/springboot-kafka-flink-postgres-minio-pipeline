@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 # Start the stack, or rebuild/recreate only the named services.
-# Usage: start.sh [--restart] [--rebuild] [--profile <name>] [service...]
-#   --restart          Full stack: stop first. With services: --force-recreate them.
+# Usage: start.sh [--fresh] [--restart] [--rebuild] [--profile <name>] [service...]
+#   --fresh            Full stack: stop, wipe volumes (DESTROYS Postgres/Kafka/MinIO data) and prune
+#                      this project's dangling images, then start. Does NOT rebuild images — pair
+#                      with --rebuild (e.g. 'start.sh --fresh --rebuild'). Not combinable with
+#                      --restart or a service list.
+#   --restart          Full stack: stop first (keeps volumes). With services: --force-recreate them.
 #   --rebuild          Rebuild Docker images before starting
 #   --profile testing  Apply docker-compose.testing.yml (enables www.gstatic.com image URL fetching)
 #   service...         Limit the operation to named services, e.g. 'start.sh --rebuild backend'
+#
+# Thin front-end: every docker action goes through docker-helper.sh, which owns the stack lifecycle
+# (up / stop / build / prune). This script only parses flags and delegates.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,49 +19,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
-require_docker
+helper() { "$SCRIPT_DIR/docker-helper.sh" "$@"; }
 
-# Rebuild/recreate only the named services. Two of them need extra handling:
-#   ui        - its build context cannot read ../backend, so stage the shared
-#               event-payload schema into frontend/public before building.
-#   flink-job - it submits the job then idles; the JobManager keeps the prior
-#               submission running across a plain recreate, so recycle the
-#               JobManager/TaskManager (no persisted state) to clear the old job
-#               before the rebuilt job is resubmitted.
-start_services() {
-  local -a targets=("$@")
-  local svc
-  local recycle_cluster=false
-
-  for svc in "$@"; do
-    case "$svc" in
-      ui) stage_payload_schema ;;
-      flink-job) recycle_cluster=true ;;
-    esac
-  done
-
-  if $recycle_cluster; then
-    targets=(flink-jobmanager flink-taskmanager "${targets[@]}")
-    RESTART=true
-  fi
-
-  local -a args=(up -d)
-  if $REBUILD; then args+=(--build); fi
-  if $RESTART; then args+=(--force-recreate); fi
-
-  compose "${args[@]}" "${targets[@]}"
-  compose ps
-}
-
+FRESH=false
 RESTART=false
 REBUILD=false
 SERVICES=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --fresh) FRESH=true ;;
     --restart) RESTART=true ;;
     --rebuild) REBUILD=true ;;
     --profile)
@@ -73,21 +50,35 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+if $FRESH; then
+  if $RESTART; then
+    echo "--fresh and --restart both stop the stack but differ on volumes; pick one." >&2
+    exit 1
+  fi
+  if [[ ${#SERVICES[@]} -gt 0 ]]; then
+    echo "--fresh operates on the whole stack; drop the service list." >&2
+    exit 1
+  fi
+fi
+
+# Service-scoped: recreate/build just those, no whole-stack stop. docker-helper.sh --up handles the
+# flink-job cluster recycle when flink-job is among them.
 if [[ ${#SERVICES[@]} -gt 0 ]]; then
-  start_services "${SERVICES[@]}"
+  up=(--up)
+  if $REBUILD; then up+=(--build); fi
+  if $RESTART; then up+=(--recreate); fi
+  helper "${up[@]}" "${SERVICES[@]}"
   exit 0
 fi
 
-if $RESTART; then
-  compose down
+# Whole stack: the optional stop is delegated (--fresh wipes + prunes; --restart keeps volumes),
+# then bring everything up.
+if $FRESH; then
+  helper --stop --prune
+elif $RESTART; then
+  helper --stop --keep-volumes
 fi
 
-# Plain `up -d` still builds images absent on first run, so stage the schema for both paths.
-stage_payload_schema
-
-if $REBUILD; then
-  compose up -d --build
-else
-  compose up -d
-fi
-compose ps
+up=(--up)
+if $REBUILD; then up+=(--build); fi
+helper "${up[@]}"
