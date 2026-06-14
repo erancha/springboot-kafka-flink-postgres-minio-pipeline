@@ -74,6 +74,15 @@ Reading the line:
   cleared before its `for` duration elapsed (a near-miss that never notified). `Alerting` = it
   actually fired. `Error` / `NoData` = Grafana could not evaluate the rule (the DatasourceError /
   missing-series states). An episode that only ever reached `Pending` is informational, not a firing.
+- **`Error` / `NoData` still notify — never dismiss them as non-events.** They reach the user's inbox
+  exactly like `Alerting`; the user can paste one back asking why it went unreported. Report every
+  such episode and say what it means: the named rule (e.g. `Backend request latency high`) did **not**
+  measure its condition — Grafana's evaluator failed to run it. The annotation carries the real cause
+  (e.g. `[sqlstore.max-retries-reached] database is locked` = Grafana's own SQLite store was locked,
+  often under load or while a concurrent reader — including `diagnose.sh` copying that db — contends
+  on it). A summary with `[no value]` / `%!f(<nil>)s` is a Go printf over a nil from the failed query,
+  confirming "no data," not a real high reading. So an `Error` episode is a monitoring-health signal,
+  not a pipeline signal — but it is a real, delivered alert and must appear in the write-up.
 - `RESOLVED — still active` means the alert had not returned to Normal by the end of the window.
 - `FIRED <before window>` means the fire transition predates the window start; only the resolve was
   captured. Widen `--since` to see when it fired.
@@ -127,6 +136,21 @@ windows you hand to every log and Prometheus probe that follows.
 When the bundle reports `SLICE n/10` instead of runs (a single continuous run), tabulate the 10
 slices as the columns and read left-to-right — same method, finer grain: rising lag/busy/ckpt across
 slices at flat throughput is the table deepening its own backlog within one run.
+
+### Always report, regardless of the verdict
+
+Two things must appear in every write-up even when the verdict is "healthy" — do not skip them
+because the metrics look clean:
+
+- **Every alert episode in the window, mapped to its run.** List each `FIRED … RESOLVED` line and
+  state which run window it falls inside (or "between runs"), including `Pending`, `Error`, and
+  `NoData` episodes — the user receives these notifications and will ask why one went unreported. For
+  each, say whether it is load-induced (fires inside a run) or a monitoring-health artifact (`Error` /
+  `NoData`, see the alerts-reading rules above).
+- **Flink fault state, explicitly.** Always check and state the `restarts` / `failed_ckpt` deltas and
+  whether `flink-jobmanager` / `flink-taskmanager` logged anything — even a clean "restarts Δ=0,
+  failed_ckpt Δ=0, no JM/TM errors" is a required line, not an omission. Do not infer Flink is fine
+  from throughput alone.
 
 ## Step 3 — read the signals
 

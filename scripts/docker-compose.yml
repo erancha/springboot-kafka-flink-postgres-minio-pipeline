@@ -154,6 +154,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      # SQLite store: under load, alert-rule reads collide with concurrent writers and surface as
+      # DatasourceError ("database is locked"). WAL lets writers proceed without blocking readers;
+      # query_retries rides out a transient lock instead of erroring the rule evaluation.
+      - GF_DATABASE_WAL=true
+      - GF_DATABASE_QUERY_RETRIES=5
       # Grafana only reads GF_-prefixed env, so remap the project's SMTP_*/EMAIL_TO names onto it.
       - GF_SMTP_ENABLED=true
       - GF_SMTP_HOST=${SMTP_HOST}:${SMTP_PORT}
