@@ -53,8 +53,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0
+          "unit": "short",
+          "decimals": 1
         },
         "overrides": []
       },
@@ -98,8 +98,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0
+          "unit": "short",
+          "decimals": 1
         },
         "overrides": []
       }
@@ -127,8 +127,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "decimals": 0
+          "unit": "short",
+          "decimals": 1
         },
         "overrides": []
       },

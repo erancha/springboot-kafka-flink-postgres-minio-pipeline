@@ -67,7 +67,7 @@
       "description": "Two views of how far behind ingest the pipeline is, on one axis so the gap is visible. 'committed lag (Kafka)' = latest - committed offset from kafka-exporter; Flink commits offsets only on a successful checkpoint, so this is the authoritative durable-progress signal and matches Kafka UI. 'pending records (Flink)' = latest - in-flight read position from Flink's own gauge, reported only while the source task is RUNNING. Healthy: both small, committed riding slightly above pending in a checkpoint-interval sawtooth. A widening gap (committed climbing while pending stays low or goes stale) means checkpoints are not completing, so offsets stop committing — the canonical 'are we keeping up' alarm, hence Health not Throughput.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         { "refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-processor\",topic=\"events\"})", "legendFormat": "committed lag (Kafka)" },
         { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords)", "legendFormat": "pending records (Flink)" }
@@ -120,7 +120,7 @@
       "description": "Mirror of the Health-row lag panel, stacked directly above events/sec so lag can be cross-referenced against throughput without leaving the Throughput view: rising committed lag while events/sec is flat means the pipeline, not the inbound rate, is the bottleneck. Both series (committed lag from kafka-exporter, pending records from Flink) share the Health-row panel's meaning; the paging-grade copy lives in the Health row.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         { "refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-processor\",topic=\"events\"})", "legendFormat": "committed lag (Kafka)" },
         { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords)", "legendFormat": "pending records (Flink)" }
@@ -143,7 +143,7 @@
       "description": "Per-second records entering each Postgres write operator: data_to_postgres (DATA path) vs image_to_postgres (enriched IMAGE path). Reporter-native numRecordsIn, no custom code. Stacked between lag (above) and the cumulative-by-type counter (below) — the same numRecordsIn series as a rate. Permanent-write failures still count here; the per-stage DLQ panel in Health shows the failure split.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [ { "refId": "A", "expr": "sum by (operator_name) (rate(flink_taskmanager_job_task_operator_numRecordsIn{operator_name=~\"data_to_postgres|image_to_postgres\"}[5m]))", "legendFormat": "{{operator_name}}" } ]
     },
     {
@@ -163,7 +163,7 @@
       "description": "Running total of records entering each Postgres write operator since the job started. Same numRecordsIn series as events/sec (directly above), shown as the raw counter for the long-run DATA-vs-IMAGE workload mix. Resets to 0 on a job restart (expected).",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [ { "refId": "A", "expr": "sum by (operator_name) (flink_taskmanager_job_task_operator_numRecordsIn{operator_name=~\"data_to_postgres|image_to_postgres\"})", "legendFormat": "{{operator_name}}" } ]
     }
   ]
