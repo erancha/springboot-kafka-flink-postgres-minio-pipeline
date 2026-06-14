@@ -21,3 +21,11 @@ scrape_configs:
     static_configs:
       - targets:
           - kafka-exporter:9308
+
+  # Backend ingestion metrics; target is file_sd-sourced so the backend can run in this stack or
+  # on another machine.
+  - job_name: backend
+    metrics_path: /actuator/prometheus
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/backend.yml

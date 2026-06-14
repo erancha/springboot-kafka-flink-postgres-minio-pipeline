@@ -77,6 +77,10 @@ do_up() {
   # Plain `up -d` still builds images absent on first run, so stage the schema either way.
   stage_payload_schema
 
+  # Materialize the backend scrape target before Prometheus mounts it.
+  load_env
+  render_prometheus_backend_target "${BACKEND_METRICS_TARGET:-}"
+
   local -a args=(up -d)
   if $build; then args+=(--build); fi
   if $recreate; then args+=(--force-recreate); fi

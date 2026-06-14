@@ -1,0 +1,87 @@
+apiVersion: 1
+
+# Backend ingestion alert rules: scrape liveness + request latency. Metrics come from the Spring
+# Boot actuator endpoint scraped under job="backend" (datasource prometheus-pipeline). Unlike the
+# Flink rules, these load in every stack, including the backend-only LAN stack.
+groups:
+  - orgId: 1
+    name: backend-health
+    folder: Backend Health
+    interval: 1m
+    rules:
+      # Fires when Prometheus cannot scrape the backend actuator endpoint — the process is down or
+      # unreachable. If Prometheus itself is unreachable the query returns no data, which also fires.
+      - uid: backend-target-down
+        title: Backend target down
+        condition: C
+        for: 1m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+          host_machine: $MACHINE_NAME
+        annotations:
+          summary: '{{ $labels.host_machine }} — backend scrape target {{ $labels.instance }} is unreachable'
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-pipeline
+            model:
+              refId: A
+              expr: up{job="backend"}
+              instant: true
+              range: false
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      # Fires when the mean request time over 5m exceeds 1s — the time-sum rate divided by the
+      # count rate across all endpoints. With no traffic both rates are 0, so the division yields
+      # no data and the rule stays quiet (noDataState OK) rather than firing on an idle backend.
+      - uid: backend-request-latency-high
+        title: Backend request latency high
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          host_machine: $MACHINE_NAME
+        annotations:
+          summary: '{{ $labels.host_machine }} — backend mean request time {{ printf "%.2f" $values.A.Value }}s over 5m'
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-pipeline
+            model:
+              refId: A
+              expr: sum(rate(http_server_requests_seconds_sum{job="backend"}[5m])) / sum(rate(http_server_requests_seconds_count{job="backend"}[5m]))
+              instant: true
+              range: false
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]

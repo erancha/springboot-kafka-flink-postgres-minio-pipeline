@@ -183,6 +183,7 @@ services:
       - "${PROMETHEUS_PORT}:9090"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/targets:/etc/prometheus/targets:ro
       - prometheus_data:/prometheus
     depends_on:
       - flink-jobmanager
@@ -232,6 +233,7 @@ services:
       - KAFKA_HOST_LOCAL=${KAFKA_HOST}
       - KAFKA_PORT=${KAFKA_PORT}
       - KAFKA_TOPIC=${KAFKA_TOPIC}
+      - KAFKA_SEND_TIMEOUT_SECONDS
       - MINIO_HOST_LOCAL=${MINIO_HOST}
       - MINIO_PORT=${MINIO_PORT}
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}

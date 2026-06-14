@@ -26,3 +26,5 @@ flink/**/*.class
 # JMeter: vendored runtime and per-run results are local artifacts
 jmeter/.runtime/
 jmeter/results/
+
+infra/prometheus/targets/

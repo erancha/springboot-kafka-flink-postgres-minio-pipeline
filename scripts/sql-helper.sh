@@ -9,7 +9,7 @@
 #   ./scripts/sql-helper.sh -tA -c "SELECT count(*) FROM processed_events;"
 #   ./scripts/sql-helper.sh -c "TRUNCATE processed_events, event_type_counts_agg, image_size_buckets_agg RESTART IDENTITY;"
 #   ./scripts/sql-helper.sh -f infra/postgres/analytics.sql
-#   ./scripts/sql-helper.sh --host=db.example.com -c "SELECT 1"
+#   ./scripts/sql-helper.sh --host db.example.com -c "SELECT 1"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,9 +26,8 @@ REMOTE_HOST=""
 ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --host=*) REMOTE_HOST="${1#*=}"; shift ;;
-    --host)   REMOTE_HOST="${2:?--host needs a name or ip}"; shift 2 ;;
-    *)        ARGS+=("$1"); shift ;;
+    --host) REMOTE_HOST="${2:?--host needs a name or ip}"; shift 2 ;;
+    *)      ARGS+=("$1"); shift ;;
   esac
 done
 set -- "${ARGS[@]+"${ARGS[@]}"}"

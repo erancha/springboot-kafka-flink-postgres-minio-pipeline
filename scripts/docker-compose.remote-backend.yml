@@ -1,0 +1,12 @@
+# Resolves the broker's advertised name 'kafka' to a Kafka host on another machine, so the backend
+# container can publish across the LAN.
+services:
+  backend:
+    extra_hosts:
+      - "kafka:${KAFKA_HOST}"
+
+  grafana:
+    # Mounts an empty file over flink-alerts.yaml so Grafana provisions no Flink/Kafka alert rules;
+    # they would otherwise fire here, where no Flink runs. Backend alerts and contacts are untouched.
+    volumes:
+      - /dev/null:/etc/grafana/provisioning/alerting/flink-alerts.yaml:ro

@@ -1,0 +1,199 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "title": "Backend Ingestion",
+  "uid": "backend-ingestion",
+  "tags": ["pipeline", "backend", "operability"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "15s",
+  "timepicker": { "refresh_intervals": ["5s", "10s", "15s", "30s", "1m", "5m", "15m", "30m", "1h"] },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Ingestion — is the backend the bottleneck?",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Backend scrape target up",
+      "description": "1 when Prometheus is scraping the backend's /actuator/prometheus endpoint. 0 means the backend is down or BACKEND_METRICS_TARGET points at the wrong host:port — all panels below go blind.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(up{job=\"backend\"})" } ]
+    },
+    {
+      "id": 2,
+      "type": "gauge",
+      "title": "Tomcat thread saturation",
+      "description": "Busy worker threads as a fraction of the configured max (default 200). Approaching 1.0 means the HTTP tier — not Kafka/Flink — is the ceiling: requests queue behind a full thread pool. The synchronous Kafka publish-ack holds a thread for the broker round-trip, so ack latency feeds this directly.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 } ] } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "tomcat_threads_busy_threads{job=\"backend\"} / tomcat_threads_config_max_threads{job=\"backend\"}", "legendFormat": "busy / max" } ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "System load (1m)",
+      "description": "OS run-queue load average over 1 minute on the backend host. Compared against CPU count, sustained load above core count indicates CPU saturation rather than a downstream wait.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 4, "x": 9, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "system_load_average_1m{job=\"backend\"}", "legendFormat": "load 1m" } ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Request rate by status",
+      "description": "Accepted HTTP request rate to the backend, split by response status class. 5xx here is the 503 raised when a Kafka publish fails or times out; a 2xx plateau under rising offered load marks the backend's sustainable accept rate.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 5, "w": 11, "x": 13, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"backend\"}[$__rate_interval]))", "legendFormat": "{{status}}" } ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "HTTP latency (avg / p50 / p95 / p99)",
+      "description": "Server-side request latency. Percentiles come from histogram_quantile over the http_server_requests_seconds_bucket histogram (enabled via percentiles-histogram). A widening p99-to-avg gap points at tail stalls — typically GC pauses or slow Kafka acks holding threads.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(http_server_requests_seconds_sum{job=\"backend\"}[$__rate_interval])) / sum(rate(http_server_requests_seconds_count{job=\"backend\"}[$__rate_interval]))", "legendFormat": "avg" },
+        { "refId": "B", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\"}[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "C", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\"}[$__rate_interval])))", "legendFormat": "p95" },
+        { "refId": "D", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\"}[$__rate_interval])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Error rate (4xx / 5xx)",
+      "description": "Client- and server-error request rates. 5xx tracks publish-path failures returned as 503 (Kafka send timeout/broker error); 4xx tracks rejected submissions (validation, SSRF allowlist, oversize body).",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{job=\"backend\",status=~\"4..\"}[$__rate_interval]))", "legendFormat": "4xx" },
+        { "refId": "B", "expr": "sum(rate(http_server_requests_seconds_count{job=\"backend\",status=~\"5..\"}[$__rate_interval]))", "legendFormat": "5xx" }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Tomcat threads",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Threads: busy vs current vs max",
+      "description": "Busy threads are actively serving requests; current is the pool size; config max is the hard ceiling (server.tomcat.threads.max, default 200). Busy pinned at max with current at max means the pool is exhausted and further load only grows the accept queue.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "tomcat_threads_busy_threads{job=\"backend\"}", "legendFormat": "busy" },
+        { "refId": "B", "expr": "tomcat_threads_current_threads{job=\"backend\"}", "legendFormat": "current" },
+        { "refId": "C", "expr": "tomcat_threads_config_max_threads{job=\"backend\"}", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Active connections",
+      "description": "Connections currently held by the Tomcat connector. Rising while busy threads sit at max indicates clients waiting on a saturated thread pool.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "tomcat_connections_current_connections{job=\"backend\"}", "legendFormat": "connections" } ]
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Kafka producer (publish path)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Producer request latency (avg / max)",
+      "description": "Broker acknowledgement latency for produce requests. Because the controller blocks on this ack before returning, it is the per-request service time that, times the thread pool, sets the backend's throughput ceiling (Little's Law).",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "avg(kafka_producer_request_latency_avg{job=\"backend\"})", "legendFormat": "avg" },
+        { "refId": "B", "expr": "max(kafka_producer_request_latency_max{job=\"backend\"})", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Producer send & error rate",
+      "description": "Records published to Kafka per second versus producer-side send errors. A nonzero error rate precedes the 503s surfaced on the HTTP error panel.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(kafka_producer_record_send_total{job=\"backend\"}[$__rate_interval]))", "legendFormat": "sent" },
+        { "refId": "B", "expr": "sum(rate(kafka_producer_record_error_total{job=\"backend\"}[$__rate_interval]))", "legendFormat": "errors" }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "JVM",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Heap used vs max",
+      "description": "Used heap against the heap ceiling. Heap riding near max drives more frequent GC, which shows up as latency-tail growth on the p99 panel.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{job=\"backend\",area=\"heap\"})", "legendFormat": "used" },
+        { "refId": "B", "expr": "sum(jvm_memory_max_bytes{job=\"backend\",area=\"heap\"})", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "GC pause time",
+      "description": "Seconds spent in stop-the-world GC pauses per second of wall clock. Sustained nonzero values stall request threads and inflate p99 latency.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(rate(jvm_gc_pause_seconds_sum{job=\"backend\"}[$__rate_interval]))", "legendFormat": "pause/s" } ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "CPU usage (process / system)",
+      "description": "Backend process CPU share and whole-host CPU share, each 0–1. Process CPU near 1.0 means the JVM is compute-bound; a large system-minus-process gap means other tenants on the host are competing.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "process_cpu_usage{job=\"backend\"}", "legendFormat": "process" },
+        { "refId": "B", "expr": "system_cpu_usage{job=\"backend\"}", "legendFormat": "system" }
+      ]
+    }
+  ]
+}

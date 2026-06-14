@@ -24,6 +24,16 @@ stage_payload_schema() {
      "$ROOT_DIR/frontend/public/event-payload-schema.json"
 }
 
+# Writes the given scrape target (arg 1, default backend:8080) into the Prometheus target file backend.yml.
+render_prometheus_backend_target() {
+  local target="${1:-backend:8080}"
+  mkdir -p "$ROOT_DIR/infra/prometheus/targets"
+  cat > "$ROOT_DIR/infra/prometheus/targets/backend.yml" <<EOF
+# Generated on start — edits are overwritten.
+- targets: ["${target}"]
+EOF
+}
+
 require_docker() {
   command -v docker >/dev/null 2>&1 || {
     echo "docker not found" >&2

@@ -1,6 +1,20 @@
 server:
   port: ${SERVER_PORT:8080}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # Restrict the actuator surface to liveness and the metrics scrape endpoint.
+        include: health,prometheus
+  metrics:
+    distribution:
+      # Export HTTP timings as cumulative latency buckets, e.g. {le=0.1s: 900, le=0.25s: 980,
+      # total: 1000}. Prometheus then derives any percentile at query time — p95 = the 950th
+      # request, which lands in the 0.1–0.25s bucket — instead of percentiles being pre-chosen here.
+      percentiles-histogram:
+        http.server.requests: true
+
 logging:
   level:
     com.webcharm: ${LOG_LEVEL:INFO}

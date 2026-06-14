@@ -6,6 +6,7 @@
 # Usage: jmeter-helper.sh [options]
 #   -t, --threads N      concurrent virtual users   (default 10)
 #   -i, --iterations N   requests per thread         (default 10)
+#       --backend-host H target a backend on another host         (default localhost)
 #       --advise N       sample docker stats over an N-minute window covering the run,
 #                        then recommend memory/parallelism knob changes from the peaks
 #       --skip-preflight skip the send-event.sh pipeline check; flood the backend
@@ -16,6 +17,7 @@
 #   ./scripts/jmeter-helper.sh                     # 10 threads x 10 = 100 requests
 #   ./scripts/jmeter-helper.sh -t 50 -i 20         # 50 threads x 20 = 1000 requests
 #   ./scripts/jmeter-helper.sh -t 50 -i 50 --advise 5   # load inside a 5 min window, advise tuning
+#   ./scripts/jmeter-helper.sh --backend-host 10.0.0.20 -t 500 -i 20000  # flood a backend on another host
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +26,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
@@ -37,12 +39,14 @@ DOWNLOAD_BASE="https://archive.apache.org/dist/jmeter/binaries"
 
 THREADS=10
 ITERATIONS=10
+BACKEND_HOST=localhost
 SKIP_PREFLIGHT=false
 ADVISE_MINUTES=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -t|--threads)     THREADS="${2:-}"; shift 2 ;;
     -i|--iterations)  ITERATIONS="${2:-}"; shift 2 ;;
+    --backend-host)   BACKEND_HOST="${2:-}"; shift 2 ;;
     --advise)         ADVISE_MINUTES="${2:-}"; shift 2 ;;
     --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -55,6 +59,8 @@ for pair in "threads:$THREADS" "iterations:$ITERATIONS"; do
     exit 1
   fi
 done
+
+[[ -n "$BACKEND_HOST" ]] || { echo "--backend-host requires a non-empty value" >&2; exit 1; }
 
 # A 0-minute window advises on the load run alone (no observation beyond it).
 if [[ -n "$ADVISE_MINUTES" && ! "$ADVISE_MINUTES" =~ ^[0-9]+$ ]]; then
@@ -266,7 +272,7 @@ advise_tune() {
 
 load_env
 : "${BACKEND_PORT:?BACKEND_PORT not set — is .env present? See .env.example}"
-BACKEND_URL="http://localhost:${BACKEND_PORT}/api/events"
+BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}/api/events"
 
 [[ -f "$TEST_PLAN" ]] || { echo "Test plan not found: $TEST_PLAN" >&2; exit 1; }
 
@@ -277,6 +283,9 @@ resolve_jmeter
 # this to deliberately load an ingestion path whose downstream (Flink/MinIO) is unhealthy.
 if [[ "$SKIP_PREFLIGHT" == true ]]; then
   echo "→ Preflight skipped (--skip-preflight); loading the backend without a pipeline check."
+elif [[ "$BACKEND_HOST" != localhost && "$BACKEND_HOST" != 127.0.0.1 && "$BACKEND_HOST" != "::1" ]]; then
+  # send-event.sh posts to localhost and verifies the local pipeline; it cannot reach a remote backend.
+  echo "→ Preflight skipped: --backend-host ${BACKEND_HOST} is remote, which send-event.sh cannot validate."
 elif ! "$SCRIPT_DIR/send-event.sh"; then
   echo "✗ Preflight failed — not starting the load run. See output above." >&2
   echo "  Re-run with --skip-preflight to load the backend anyway." >&2
