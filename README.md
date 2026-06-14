@@ -18,11 +18,10 @@ Both the data-path handling and the ingestion gate are backed by 100+ tests, inc
 Testcontainers integration suites; the CI badge above gates the backend and Flink unit tests only,
 while the integration and frontend suites are run separately.
 
-The project has been load-tested at **~10K ingestion req/s** over a multi-hour run (100M+ requests, zero errors) —
+The project has been load-tested at **~10K ingestion req/s** over a multi-hour run (250M+ requests, zero failures) —
 with load generation, ingestion, and the processing pipeline as distinct roles across networked
 machines — and Flink draining the resulting Kafka backlog into Postgres at
-**~12K events/s**, faster than a single client can push events in, so Kafka absorbs the bursts and the
-batched sink is not the bottleneck.
+**~12K events/s**.
 See [Load testing](docs/TESTING.md#load-testing--ingestion-vs-drain) for the measured numbers.
 
 ### Out of scope
