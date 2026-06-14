@@ -6,17 +6,17 @@
 -- Run with:
 --   ./scripts/sql-file.sh infra/postgres/analytics.sql
 
-\echo '== [processed_events] Post-hoc: Count events by type (computed at query time) =='
-SELECT event_type, COUNT(*)
-FROM processed_events
-GROUP BY event_type
-ORDER BY COUNT(*) DESC;
+-- \echo '== [processed_events] Post-hoc: Count events by type (computed at query time) =='
+-- SELECT event_type, COUNT(*)
+-- FROM processed_events
+-- GROUP BY event_type
+-- ORDER BY COUNT(*) DESC;
 
-\echo '== [processed_events] Post-hoc: Aggregate events by hour (computed at query time) =='
-SELECT date_trunc('hour', event_time) AS hour, event_type, COUNT(*)
-FROM processed_events
-GROUP BY 1, 2
-ORDER BY 1 DESC, 2;
+-- \echo '== [processed_events] Post-hoc: Aggregate events by hour (computed at query time) =='
+-- SELECT date_trunc('hour', event_time) AS hour, event_type, COUNT(*)
+-- FROM processed_events
+-- GROUP BY 1, 2
+-- ORDER BY 1 DESC, 2;
 
 \echo '== [event_type_counts_agg] Real-time: 5-minute event count per type (pre-aggregated by Flink) =='
 SELECT window_start, window_end, event_type, event_count
@@ -24,8 +24,8 @@ FROM event_type_counts_agg
 ORDER BY window_start DESC, event_type;
 
 \echo '== [event_type_counts_agg] Total across all windows (NULL event_type = grand total) =='
--- Summing the windowed counts should match the post-hoc count above, modulo any window
--- still open (event-time watermark not yet past its end).
+-- Summing the windowed counts equals a post-hoc COUNT(*) over processed_events, modulo any
+-- window still open (event-time watermark not yet past its end).
 SELECT event_type, SUM(event_count) AS total_count
 FROM event_type_counts_agg
 GROUP BY ROLLUP(event_type)
