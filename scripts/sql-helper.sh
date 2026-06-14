@@ -8,6 +8,7 @@
 #   ./scripts/sql-helper.sh
 #   ./scripts/sql-helper.sh -tA -c "SELECT count(*) FROM processed_events;"
 #   ./scripts/sql-helper.sh -c "TRUNCATE processed_events, event_type_counts_agg, image_size_buckets_agg RESTART IDENTITY;"
+#   ./scripts/sql-helper.sh -c "SELECT relname, pg_size_pretty(pg_table_size(relid)) data, pg_size_pretty(pg_indexes_size(relid)) idx, pg_size_pretty(pg_total_relation_size(relid)) total FROM pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC;"
 #   ./scripts/sql-helper.sh -f infra/postgres/analytics.sql
 #   ./scripts/sql-helper.sh --host db.example.com -c "SELECT 1"
 set -euo pipefail
@@ -17,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
