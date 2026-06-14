@@ -31,8 +31,8 @@ do not silently keep 3h when the user named a window.
 .claude/skills/diagnosing-kafka-flink-postgres-load-tests/scripts/diagnose.sh --since 3h   # or the duration the skill was given
 ```
 
-Prints four sections: stack status, **run timeline + per-run metrics**, **Postgres table status**,
-and **recent error signatures**.
+Prints five sections: stack status, **run timeline + per-run metrics**, **alerts fired / resolved**,
+**Postgres table status**, and **recent error signatures**.
 
 Detection is **windowed**: it only sees runs inside `[now − since, now]`, so any run that ended
 before the window started is invisible — it does not scan from the beginning of history. The bundle
@@ -50,6 +50,36 @@ reported as `SLICE 1/10 … 10/10`. A lone run has no later run to diff against,
 trend view — intra-run drift (e.g. insert latency climbing as the table grows) shows up as rising
 lag/busy/ckpt across slices at the same throughput. Narrow `--since` to bracket one run if the
 window caught several and you want the per-slice view of just one.
+
+## Alerts fired / resolved
+
+The alerts section lists each Grafana alert episode in the window, one line per fired→resolved
+pair, anchored to the fire time so it lines up with the run windows above it:
+
+```
+FIRED 15:19:10   RESOLVED 15:21:10  (2m00s)   [Error]    Flink restart looping  | host_machine=Eran, severity=warning
+FIRED 19:47:10   RESOLVED — still active      [Pending]  Kafka consumer stalled | host_machine=Eran, severity=critical
+```
+
+Alerts are Grafana-managed (rules in `infra/grafana/provisioning/alerting/`, e.g.
+`flink-alerts.yaml` / `backend-alerts.yaml`), not
+Prometheus — Prometheus carries no alerting rules here, so there is no `ALERTS` series to read.
+Grafana records every state transition (Normal → Pending → Alerting/Error → Normal) in its SQLite
+store; `diagnose.sh` copies that db out of the container read-only and `grafana_alerts.py` pairs
+each departure from Normal with the next return to Normal. No Grafana credentials are involved.
+
+Reading the line:
+
+- `[state]` is the **peak** state the episode reached. `Pending` = the rule's condition was true but
+  cleared before its `for` duration elapsed (a near-miss that never notified). `Alerting` = it
+  actually fired. `Error` / `NoData` = Grafana could not evaluate the rule (the DatasourceError /
+  missing-series states). An episode that only ever reached `Pending` is informational, not a firing.
+- `RESOLVED — still active` means the alert had not returned to Normal by the end of the window.
+- `FIRED <before window>` means the fire transition predates the window start; only the resolve was
+  captured. Widen `--since` to see when it fired.
+- Times are **local**, already converted from the stored epochs — unlike the *recent error
+  signatures* section, which is UTC. Correlate a fire time directly against the run windows; an alert
+  that fires inside a run window is a load-induced signal, one that fires between runs is not.
 
 ## Metric glossary — what each row measures, and where
 

@@ -56,6 +56,24 @@ compose ps --format '{{.Service}}\t{{.Status}}' 2>/dev/null || {
 rule "RUN TIMELINE & PER-RUN METRICS  (window=${SINCE})"
 python3 "$SCRIPT_DIR/prom_snapshot.py" --prom-url "$PROM_URL" --since "$SINCE_SECS" --step "$STEP"
 
+rule "ALERTS FIRED / RESOLVED  (since ${SINCE})"
+# Grafana records alert state transitions in its SQLite store. Copy that db out of the container
+# (read-only) and pair each fired->resolved episode, so alert windows sit next to the run windows
+# above them. Reading the file needs no Grafana credentials.
+alerts() {
+  local cid db
+  cid="$(compose ps -q grafana 2>/dev/null || true)"
+  if [[ -z "$cid" ]]; then echo "(grafana not running)"; return; fi
+  db="$(mktemp "${TMPDIR:-/tmp}/grafana_db.XXXXXX")"
+  if docker cp "$cid:/var/lib/grafana/grafana.db" "$db" >/dev/null 2>&1; then
+    python3 "$SCRIPT_DIR/grafana_alerts.py" --db "$db" --since "$SINCE_SECS"
+  else
+    echo "(could not read grafana.db)"
+  fi
+  rm -f "$db"
+}
+alerts
+
 rule "POSTGRES TABLE STATUS"
 # n_dead_tup, last_autovacuum and total size per table reveal bloat and the table-growth
 # that makes a later run slower than an identical earlier one.
