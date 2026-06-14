@@ -1,7 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json ./
-RUN npm install
+
+# Cache mount keeps npm's download cache across builds, so an evicted install layer refetches
+# from the local cache instead of the registry.
+RUN --mount=type=cache,target=/root/.npm npm install
 COPY . .
 RUN npm run build
 
