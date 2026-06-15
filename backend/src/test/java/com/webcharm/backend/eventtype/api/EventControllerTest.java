@@ -52,7 +52,7 @@ class EventControllerTest {
             .andExpect(jsonPath("$.id").exists())
             .andExpect(jsonPath("$.eventTime").exists());
 
-        verify(eventProducer).send(argThat(e -> "DATA".equals(e.get("eventType"))));
+        verify(eventProducer).send(any(), any(), argThat(e -> "DATA".equals(e.get("eventType"))));
     }
 
     @Test
@@ -62,7 +62,7 @@ class EventControllerTest {
                 .content("{\"eventType\":\"TEXT\",\"payload\":{\"msg\":\"hello\"}}"))
             .andExpect(status().isOk());
 
-        verify(eventProducer).send(argThat(e -> "DATA".equals(e.get("eventType"))));
+        verify(eventProducer).send(any(), any(), argThat(e -> "DATA".equals(e.get("eventType"))));
     }
 
     @Test
@@ -72,7 +72,7 @@ class EventControllerTest {
                 .content("{\"eventType\":\"DATA\"}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -82,7 +82,7 @@ class EventControllerTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{}}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -92,7 +92,7 @@ class EventControllerTest {
                 .content("{\"eventType\":\"TEXT\"}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -131,7 +131,7 @@ class EventControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").exists());
 
-        verify(eventProducer).send(argThat(e ->
+        verify(eventProducer).send(any(), any(), argThat(e ->
             "IMAGE".equals(e.get("eventType")) && e.containsKey("imageObjectKey")));
     }
 
@@ -152,7 +152,7 @@ class EventControllerTest {
         mvc.perform(multipart("/api/events/image-upload").file(file))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
         verify(imageUploadService, never()).upload(any(), any(), any());
     }
 
@@ -164,7 +164,7 @@ class EventControllerTest {
         mvc.perform(multipart("/api/events/image-upload").file(file))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
         verify(imageUploadService, never()).upload(any(), any(), any());
     }
 
@@ -177,7 +177,7 @@ class EventControllerTest {
         mvc.perform(multipart("/api/events/image-upload").file(file))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
         verify(imageUploadService, never()).upload(any(), any(), any());
     }
 
@@ -233,7 +233,7 @@ class EventControllerTest {
         when(imageUploadService.upload(any(), any(), any()))
             .thenReturn("images/2026-05-16/test-id.jpg");
         doThrow(new KafkaPublishException("broker down", new RuntimeException()))
-            .when(eventProducer).send(any());
+            .when(eventProducer).send(any(), any(), any());
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
@@ -249,7 +249,7 @@ class EventControllerTest {
         when(imageUploadService.upload(any(), any(), any()))
             .thenReturn("images/2026-05-16/test-id.jpg");
         doThrow(new KafkaPublishException("broker down", new RuntimeException()))
-            .when(eventProducer).send(any());
+            .when(eventProducer).send(any(), any(), any());
         doThrow(new ObjectStoreException("delete failed", new RuntimeException()))
             .when(imageUploadService).delete(any());
 
@@ -263,7 +263,7 @@ class EventControllerTest {
     @Test
     void publishEvent_kafkaSendFailure_returns503() throws Exception {
         doThrow(new KafkaPublishException("broker down", new RuntimeException()))
-                .when(eventProducer).send(any());
+                .when(eventProducer).send(any(), any(), any());
 
         mvc.perform(post("/api/events")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -320,7 +320,7 @@ class EventControllerTest {
                 .content("{\"eventType\":\"IMAGE\"}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -330,6 +330,6 @@ class EventControllerTest {
                 .content("{\"eventType\":\"IMAGE\",\"imageUrl\":\"   \"}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 }

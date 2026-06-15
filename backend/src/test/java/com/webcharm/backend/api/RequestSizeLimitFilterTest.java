@@ -50,7 +50,7 @@ class RequestSizeLimitFilterTest {
                 .content(oversized))
             .andExpect(status().isPayloadTooLarge());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -72,6 +72,6 @@ class RequestSizeLimitFilterTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{\"k\":\"v\"}}"))
             .andExpect(status().isOk());
 
-        verify(eventProducer).send(any());
+        verify(eventProducer).send(any(), any(), any());
     }
 }

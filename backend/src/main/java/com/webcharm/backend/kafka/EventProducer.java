@@ -19,29 +19,25 @@ public class EventProducer {
 
   private final KafkaTemplate<String, String> kafkaTemplate;
   private final ObjectMapper objectMapper;
-  private final String topic;
   private final int sendTimeoutSeconds;
 
   /** Spring constructor — all dependencies injected; sendTimeoutSeconds is bound from app.kafka.send-timeout-seconds (default in application.yml). */
   public EventProducer(
       KafkaTemplate<String, String> kafkaTemplate,
       ObjectMapper objectMapper,
-      @Value("${app.kafka.topic}") String topic,
       @Value("${app.kafka.send-timeout-seconds:5}") int sendTimeoutSeconds) {
     this.kafkaTemplate = kafkaTemplate;
     this.objectMapper = objectMapper;
-    this.topic = topic;
     this.sendTimeoutSeconds = sendTimeoutSeconds;
   }
 
   /**
-   * Serializes the event to JSON and publishes it to Kafka, blocking until the broker acknowledges
-   * or the send-timeout elapses. Throws KafkaPublishException on broker failure, timeout, or
-   * thread interruption, so the caller receives a 503 instead of a false 200.
+   * Serializes the event to JSON and publishes it to the given topic under the given partition key,
+   * blocking until the broker acknowledges or the send-timeout elapses. Throws KafkaPublishException
+   * on broker failure, timeout, or thread interruption, so the caller receives a 503 instead of a
+   * false 200.
    */
-  public void send(Map<String, Object> event) {
-    String key = String.valueOf(event.getOrDefault("id", ""));
-
+  public void send(String topic, String key, Map<String, Object> event) {
     String value;
     try {
       value = objectMapper.writeValueAsString(event);

@@ -42,6 +42,6 @@ class RequestSizeLimitFilterDisabledTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{\"k\":\"v\"}}"))
             .andExpect(status().isOk());
 
-        verify(eventProducer).send(any());
+        verify(eventProducer).send(any(), any(), any());
     }
 }

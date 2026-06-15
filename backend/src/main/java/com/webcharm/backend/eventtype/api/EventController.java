@@ -38,6 +38,9 @@ public class EventController {
   @Value("${IMAGE_URL_ALLOWED_HOSTS:}")
   private String allowedImageHosts;
 
+  @Value("${app.kafka.topic}")
+  private String topic;
+
   private final EventProducer eventProducer;
   private final ImageUploadService imageUploadService;
   private final PayloadSchemaValidator payloadSchemaValidator;
@@ -66,7 +69,7 @@ public class EventController {
     }
     UUID id = UuidV7.next();
     Instant now = Instant.now();
-    eventProducer.send(request.toEventMap(id, now, "ui"));
+    eventProducer.send(topic, id.toString(), request.toEventMap(id, now, "ui"));
     return new EventResponse(id.toString(), now.toString());
   }
 
@@ -142,7 +145,7 @@ public class EventController {
         id, file.getOriginalFilename(), file.getContentType(), file.getSize());
     String objectKey = imageUploadService.upload(id, now, file);
     try {
-      eventProducer.send(Map.of(
+      eventProducer.send(topic, id.toString(), Map.of(
           EventFields.ID, id.toString(),
           EventFields.EVENT_TYPE, EventTypes.IMAGE,
           EventFields.EVENT_TIME, now.toString(),

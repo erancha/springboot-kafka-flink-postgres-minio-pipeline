@@ -42,7 +42,7 @@ class EventControllerSchemaTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{\"orderNumber\":\"ORD-1001\",\"quantity\":3,\"sku\":\"SKU-42\"}}"))
             .andExpect(status().isOk());
 
-        verify(eventProducer).send(any());
+        verify(eventProducer).send(any(), any(), any());
     }
 
     @Test
@@ -52,7 +52,7 @@ class EventControllerSchemaTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{\"orderNumber\":\"ORD-1001\",\"quantity\":3,\"rogue\":true}}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -62,7 +62,7 @@ class EventControllerSchemaTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{\"orderNumber\":\"ORD-1001\"}}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test
@@ -72,7 +72,7 @@ class EventControllerSchemaTest {
                 .content("{\"eventType\":\"DATA\",\"payload\":{\"orderNumber\":\"ORD-1001\",\"quantity\":\"three\"}}"))
             .andExpect(status().isBadRequest());
 
-        verify(eventProducer, never()).send(any());
+        verify(eventProducer, never()).send(any(), any(), any());
     }
 
     @Test

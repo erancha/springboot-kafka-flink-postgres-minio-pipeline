@@ -20,9 +20,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Verifies that the producer serializes events to JSON, uses the event id as the Kafka partition key,
- * and throws KafkaPublishException on send failure so the caller receives a 503 rather than a false 200.
- * KafkaTemplate is replaced by a Mockito mock; no real Kafka broker is needed.
+ * Verifies that the producer publishes to the caller-supplied topic under the caller-supplied
+ * partition key, serializes any event map to JSON, and throws KafkaPublishException on send failure
+ * so the caller receives a 503 rather than a false 200. KafkaTemplate is replaced by a Mockito mock;
+ * no real Kafka broker is needed.
  */
 @ExtendWith(MockitoExtension.class)
 class EventProducerTest {
@@ -38,34 +39,22 @@ class EventProducerTest {
 
   @BeforeEach
   void setUp() {
-    producer = new EventProducer(kafkaTemplate, new ObjectMapper(), "events", 5);
+    producer = new EventProducer(kafkaTemplate, new ObjectMapper(), 5);
   }
 
   @Test
-  void send_usesEventIdAsKeyAndSerializesToJson() {
+  void send_publishesToGivenTopicAndKey_serializingAnySchema() {
     when(sendResult.getRecordMetadata()).thenReturn(recordMetadata);
-    when(kafkaTemplate.send(eq("events"), eq("abc-123"), argThat(json -> json.contains("\"DATA\""))))
+    when(kafkaTemplate.send(eq("user-events"), eq("u-1"), argThat(json -> json.contains("\"u-1\""))))
         .thenReturn(CompletableFuture.completedFuture(sendResult));
-    Map<String, Object> event = Map.of("id", "abc-123", "eventType", "DATA");
+    Map<String, Object> event = Map.of("userId", "u-1");
 
-    producer.send(event);
+    producer.send("user-events", "u-1", event);
 
     verify(kafkaTemplate).send(
-        eq("events"),
-        eq("abc-123"),
-        argThat(json -> json.contains("\"DATA\"") && json.contains("\"abc-123\"")));
-  }
-
-  @Test
-  void send_missingId_usesEmptyStringKey() {
-    when(sendResult.getRecordMetadata()).thenReturn(recordMetadata);
-    when(kafkaTemplate.send(eq("events"), eq(""), argThat(json -> json.contains("\"DATA\""))))
-        .thenReturn(CompletableFuture.completedFuture(sendResult));
-    Map<String, Object> event = Map.of("eventType", "DATA");
-
-    producer.send(event);
-
-    verify(kafkaTemplate).send(eq("events"), eq(""), argThat(json -> json.contains("\"DATA\"")));
+        eq("user-events"),
+        eq("u-1"),
+        argThat(json -> json.contains("\"userId\"") && json.contains("\"u-1\"")));
   }
 
   @Test
@@ -77,6 +66,6 @@ class EventProducerTest {
 
     Map<String, Object> event = Map.of("id", "err-id", "eventType", "DATA");
 
-    assertThrows(KafkaPublishException.class, () -> producer.send(event));
+    assertThrows(KafkaPublishException.class, () -> producer.send("events", "err-id", event));
   }
 }
