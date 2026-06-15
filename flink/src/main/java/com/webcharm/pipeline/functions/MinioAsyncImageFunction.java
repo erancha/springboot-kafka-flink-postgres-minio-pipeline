@@ -6,6 +6,7 @@ import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.ProcessedEvent;
+import com.webcharm.contract.eventtype.image.ImageRules;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.StatObjectArgs;
@@ -20,7 +21,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -41,8 +41,6 @@ import org.slf4j.LoggerFactory;
 public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, EnrichResult> {
 
   private static final Logger log = LoggerFactory.getLogger(MinioAsyncImageFunction.class);
-
-  private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
 
   /** Marker for an unrecoverable image failure; everything else is treated as retryable. */
   private static final class PermanentImageException extends RuntimeException {
@@ -209,16 +207,16 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
           // image content-type would be silently wrong, so an absent or non-image/* Content-Type
           // is a permanent failure.
           String contentType = resp.headers().firstValue("Content-Type").orElse("");
-          if (!contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
+          if (!ImageRules.isImageContentType(contentType)) {
             throw new PermanentImageException(
                 "imageUrl response is not an image (Content-Type="
                     + (contentType.isBlank() ? "<absent>" : contentType) + ")");
           }
           try (InputStream body = resp.body()) {
-            byte[] bytes = body.readNBytes((int) (MAX_IMAGE_BYTES + 1));
-            if (bytes.length > MAX_IMAGE_BYTES) {
+            byte[] bytes = body.readNBytes((int) (ImageRules.MAX_IMAGE_BYTES + 1));
+            if (bytes.length > ImageRules.MAX_IMAGE_BYTES) {
               throw new PermanentImageException(
-                  "Image response exceeds " + (MAX_IMAGE_BYTES / 1024 / 1024) + " MB cap");
+                  "Image response exceeds " + (ImageRules.MAX_IMAGE_BYTES / 1024 / 1024) + " MB cap");
             }
             return bytes;
           } catch (java.io.IOException e) {

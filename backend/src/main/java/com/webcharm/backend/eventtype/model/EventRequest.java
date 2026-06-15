@@ -1,5 +1,6 @@
-package com.webcharm.backend.model;
+package com.webcharm.backend.eventtype.model;
 
+import com.webcharm.contract.eventtype.event.EventFields;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
@@ -41,7 +42,7 @@ public class EventRequest {
 
   /**
    * Requires a non-empty payload for DATA and its TEXT alias. IMAGE is exempt: it has no payload —
-   * its content is an imageUrl or an uploaded object. A null eventType is left to {@code @NotNull}.
+   * its content is an imageUrl or an uploaded object. A null eventType is left to @NotNull.
    */
   @AssertTrue(message = "DATA events require a non-empty payload")
   public boolean isPayloadPresentWhenRequired() {
@@ -53,17 +54,17 @@ public class EventRequest {
 
   public Map<String, Object> toEventMap(@NotNull UUID id, @NotNull Instant eventTime, @NotNull String source) {
     Map<String, Object> event = new HashMap<>();
-    event.put("id", id.toString());
-    event.put("eventType", eventType.normalized());
-    event.put("eventTime", eventTime.toString());
-    event.put("source", source);
+    event.put(EventFields.ID, id.toString());
+    event.put(EventFields.EVENT_TYPE, eventType.normalized());
+    event.put(EventFields.EVENT_TIME, eventTime.toString());
+    event.put(EventFields.SOURCE, source);
 
     if (payload != null) {
-      event.put("payload", payload);
+      event.put(EventFields.PAYLOAD, payload);
     }
 
     if (imageUrl != null && !imageUrl.isBlank()) {
-      event.put("imageUrl", imageUrl);
+      event.put(EventFields.IMAGE_URL, imageUrl);
     }
 
     return event;

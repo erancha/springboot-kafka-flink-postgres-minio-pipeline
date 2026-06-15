@@ -1,4 +1,4 @@
-package com.webcharm.backend.api;
+package com.webcharm.backend.eventtype.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -1,4 +1,4 @@
-package com.webcharm.backend.minio;
+package com.webcharm.backend.eventtype.storage;
 
 import com.webcharm.backend.storage.ObjectStoreException;
 import io.minio.MinioClient;

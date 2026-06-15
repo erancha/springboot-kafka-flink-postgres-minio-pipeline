@@ -1,4 +1,4 @@
-package com.webcharm.backend.model;
+package com.webcharm.backend.eventtype.model;
 
 public class EventResponse {
   private final String id;

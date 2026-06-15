@@ -1,4 +1,4 @@
-package com.webcharm.backend.storage;
+package com.webcharm.backend.eventtype.storage;
 
 import java.io.IOException;
 import java.time.Instant;

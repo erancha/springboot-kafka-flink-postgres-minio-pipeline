@@ -1,6 +1,6 @@
-package com.webcharm.backend.minio;
+package com.webcharm.backend.eventtype.storage;
 
-import com.webcharm.backend.storage.ImageUploadService;
+import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import com.webcharm.backend.storage.ObjectStoreException;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;

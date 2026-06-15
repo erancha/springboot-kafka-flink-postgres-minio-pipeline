@@ -31,6 +31,13 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- Cross-runtime event contract. Default (compile) scope is required so the shade plugin
+         bundles it into the fat jar (it is not on the Flink runtime classpath otherwise). -->
+    <dependency>
+      <groupId>com.webcharm</groupId>
+      <artifactId>contract-eventtype</artifactId>
+      <version>1.0.0</version>
+    </dependency>
     <dependency>
       <groupId>org.apache.flink</groupId>
       <artifactId>flink-streaming-java</artifactId>

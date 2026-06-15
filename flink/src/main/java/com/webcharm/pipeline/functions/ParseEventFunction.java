@@ -7,6 +7,7 @@ import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EventType;
 import com.webcharm.pipeline.types.ProcessedEvent;
+import com.webcharm.contract.eventtype.event.EventFields;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -83,20 +84,20 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
   ProcessedEvent parse(String value) throws Exception {
     Map<String, Object> event = mapper.readValue(value, new TypeReference<Map<String, Object>>() {});
 
-    String id = required(event, "id");
-    String rawType = String.valueOf(event.getOrDefault("eventType", "")).toUpperCase();
+    String id = required(event, EventFields.ID);
+    String rawType = String.valueOf(event.getOrDefault(EventFields.EVENT_TYPE, "")).toUpperCase();
     String eventType = (EventType.DATA.equals(rawType) || EventType.IMAGE.equals(rawType))
         ? rawType : EventType.UNEXPECTED;
-    Instant eventTime = Instant.parse(required(event, "eventTime"));
-    String sourceName = String.valueOf(event.getOrDefault("source", "unknown"));
+    Instant eventTime = Instant.parse(required(event, EventFields.EVENT_TIME));
+    String sourceName = String.valueOf(event.getOrDefault(EventFields.SOURCE, "unknown"));
 
     Map<String, Object> payload = null;
-    if (event.get("payload") instanceof Map<?, ?> m) {
+    if (event.get(EventFields.PAYLOAD) instanceof Map<?, ?> m) {
       payload = (Map<String, Object>) m;
     }
 
-    String imageUrl = Optional.ofNullable(event.get("imageUrl")).map(Object::toString).orElse(null);
-    String imageObjectKey = Optional.ofNullable(event.get("imageObjectKey"))
+    String imageUrl = Optional.ofNullable(event.get(EventFields.IMAGE_URL)).map(Object::toString).orElse(null);
+    String imageObjectKey = Optional.ofNullable(event.get(EventFields.IMAGE_OBJECT_KEY))
         .map(Object::toString).orElse(null);
 
     LocalDate date = eventTime.atZone(ZoneOffset.UTC).toLocalDate();

@@ -1,0 +1,13 @@
+# The backend and flink images build from the repo root (they need the shared module, which lives
+# outside their own directory). Keep everything those builds don't consume out of the build context.
+.git
+.github
+.vscode
+.claude
+**/target
+frontend
+docs
+jmeter
+infra
+scripts
+*.md

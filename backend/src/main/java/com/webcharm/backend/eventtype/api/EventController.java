@@ -1,11 +1,14 @@
-package com.webcharm.backend.api;
+package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
-import com.webcharm.backend.storage.ImageUploadService;
-import com.webcharm.backend.model.EventRequest;
-import com.webcharm.backend.model.EventResponse;
-import com.webcharm.backend.model.EventType;
+import com.webcharm.backend.eventtype.storage.ImageUploadService;
+import com.webcharm.backend.eventtype.model.EventRequest;
+import com.webcharm.backend.eventtype.model.EventResponse;
+import com.webcharm.backend.eventtype.model.EventType;
 import com.webcharm.backend.util.UuidV7;
+import com.webcharm.contract.eventtype.event.EventFields;
+import com.webcharm.contract.eventtype.event.EventTypes;
+import com.webcharm.contract.eventtype.image.ImageRules;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.net.URI;
@@ -31,9 +34,6 @@ import org.springframework.web.multipart.MultipartFile;
 public class EventController {
 
   private static final Logger log = LoggerFactory.getLogger(EventController.class);
-
-  // Cap on stored image bytes; below the 20 MB Spring multipart limit, which only bounds heap.
-  private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
 
   @Value("${IMAGE_URL_ALLOWED_HOSTS:}")
   private String allowedImageHosts;
@@ -111,26 +111,24 @@ public class EventController {
   }
 
   /**
-   * Rejects uploads that are not storable images: empty bodies, a missing or non-image/*
-   * Content-Type, or bodies above the size cap. Content-Type is client-supplied, so this bounds
-   * what gets stored without authenticating the bytes.
-   *
-   * TODO: the backend (Spring Boot) and Flink (not Spring Boot) currently duplicate these image
-   * rules; a module shared by both would enforce one definition instead of two parallel copies.
+   * Rejects uploads that are not storable images: empty bodies, a missing or non-image
+   * Content-Type, or bodies above the shared size cap. Content-Type is client-supplied, so this
+   * bounds what gets stored without authenticating the bytes. The cap sits below the Spring
+   * multipart limit, which only bounds heap.
    */
   private void validateImageFile(MultipartFile file) {
     if (file.isEmpty()) {
       throw new IllegalArgumentException("file is required");
     }
     String contentType = file.getContentType();
-    if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+    if (!ImageRules.isImageContentType(contentType)) {
       throw new IllegalArgumentException(
           "file must be an image (Content-Type="
               + (contentType == null ? "<absent>" : contentType) + ")");
     }
-    if (file.getSize() > MAX_IMAGE_BYTES) {
+    if (file.getSize() > ImageRules.MAX_IMAGE_BYTES) {
       throw new IllegalArgumentException(
-          "file exceeds " + (MAX_IMAGE_BYTES / 1024 / 1024) + " MB cap");
+          "file exceeds " + (ImageRules.MAX_IMAGE_BYTES / 1024 / 1024) + " MB cap");
     }
   }
 
@@ -145,11 +143,11 @@ public class EventController {
     String objectKey = imageUploadService.upload(id, now, file);
     try {
       eventProducer.send(Map.of(
-          "id", id.toString(),
-          "eventType", "IMAGE",
-          "eventTime", now.toString(),
-          "source", "ui",
-          "imageObjectKey", objectKey));
+          EventFields.ID, id.toString(),
+          EventFields.EVENT_TYPE, EventTypes.IMAGE,
+          EventFields.EVENT_TIME, now.toString(),
+          EventFields.SOURCE, "ui",
+          EventFields.IMAGE_OBJECT_KEY, objectKey));
     } catch (RuntimeException publishFailure) {
       // Delete the now-orphaned object so a failed publish does not leak storage. Best-effort —
       // a failed cleanup must not mask the original publish failure.

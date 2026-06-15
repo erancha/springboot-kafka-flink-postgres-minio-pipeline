@@ -1,7 +1,7 @@
-package com.webcharm.backend.api;
+package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
-import com.webcharm.backend.storage.ImageUploadService;
+import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;

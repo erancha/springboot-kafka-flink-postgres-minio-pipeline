@@ -1,8 +1,8 @@
-package com.webcharm.backend.api;
+package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
 import com.webcharm.backend.kafka.KafkaPublishException;
-import com.webcharm.backend.storage.ImageUploadService;
+import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import com.webcharm.backend.storage.ObjectStoreException;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;

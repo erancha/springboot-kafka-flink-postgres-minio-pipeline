@@ -1,4 +1,4 @@
-package com.webcharm.backend.model;
+package com.webcharm.backend.eventtype.model;
 
 /** Accepted event types. TEXT is a client-facing alias that normalizes to DATA before Kafka publish. */
 public enum EventType {

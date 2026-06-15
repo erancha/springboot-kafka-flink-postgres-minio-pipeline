@@ -62,20 +62,22 @@ run_suite() {
 
 suite_backend() {
   ensure_java21
-  # clean ensures IDE-compiled .class files with wrong source level don't fool Maven's incremental check
-  run_suite "backend (unit)" mvn -f "$ROOT_DIR/backend/pom.xml" clean test
+  # -pl backend -am builds the shared contract module from source first, so a fresh clone with an
+  # empty local repo resolves it. clean ensures IDE-compiled .class files with wrong source level
+  # don't fool Maven's incremental check.
+  run_suite "backend (unit)" mvn -f "$ROOT_DIR/pom.xml" -pl backend -am clean test
 }
 
 suite_flink() {
   ensure_java21
-  run_suite "flink (unit)" mvn -f "$ROOT_DIR/flink/pom.xml" clean test
+  run_suite "flink (unit)" mvn -f "$ROOT_DIR/pom.xml" -pl flink -am clean test
 }
 
 suite_flink_it() {
   ensure_java21
   require_docker
   prepull_it_images
-  run_suite "flink-it (unit + integration)" mvn -f "$ROOT_DIR/flink/pom.xml" clean verify
+  run_suite "flink-it (unit + integration)" mvn -f "$ROOT_DIR/pom.xml" -pl flink -am clean verify
 }
 
 suite_frontend() {

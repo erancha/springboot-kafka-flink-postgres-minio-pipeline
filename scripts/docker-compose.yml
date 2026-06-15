@@ -13,7 +13,8 @@ x-postgres-connection: &postgres-connection
 # stay identical across the three, and the image builds once.
 x-flink-image: &flink-image
   build:
-    context: ./flink
+    context: .
+    dockerfile: flink/Dockerfile
   image: pipeline-flink:local
 
 services:
@@ -226,7 +227,8 @@ services:
   # Spring Boot API layer that validates UI requests and publishes JSON events to Kafka.
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     # CPU weight; ~50% of the 1024 default deprioritizes it when cores are saturated (no-op when free).
     # cpu_shares: 512
     deploy:
