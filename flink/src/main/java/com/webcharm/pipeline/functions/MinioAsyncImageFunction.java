@@ -6,6 +6,8 @@ import com.webcharm.pipeline.types.DlqRecord;
 import com.webcharm.pipeline.types.DlqStage;
 import com.webcharm.pipeline.types.EnrichResult;
 import com.webcharm.pipeline.types.ProcessedEvent;
+import com.webcharm.contract.eventtype.image.ImageFormat;
+import com.webcharm.contract.eventtype.image.ImageObjectKey;
 import com.webcharm.contract.eventtype.image.ImageRules;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -19,7 +21,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -160,10 +161,9 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
               "IMAGE event has neither imageUrl nor imageObjectKey", Instant.now())));
     }
 
-    String date = DateTimeFormatter.ISO_LOCAL_DATE.format(value.getDate());
-    String extension = guessExtensionFromUrl(url);
-    String objectKey = "images/" + date + "/" + value.getId() + extension;
-    String contentType = guessContentType(extension);
+    String extension = ImageFormat.extensionForUrl(url);
+    String objectKey = ImageObjectKey.of(value.getDate(), value.getId(), extension);
+    String contentType = ImageFormat.contentTypeForExtension(extension);
 
     return CompletableFuture
         .supplyAsync(() -> statSize(bucket, objectKey), executor)
@@ -318,26 +318,6 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     } catch (Exception e) {
       return value.getId().toString();
     }
-  }
-
-  private static String guessExtensionFromUrl(String url) {
-    try {
-      String path = URI.create(url).getPath().toLowerCase();
-      if (path.endsWith(".png")) return ".png";
-      if (path.endsWith(".webp")) return ".webp";
-      if (path.endsWith(".gif")) return ".gif";
-    } catch (Exception ignored) {
-    }
-    return ".jpg";
-  }
-
-  private static String guessContentType(String extension) {
-    return switch (extension) {
-      case ".png" -> "image/png";
-      case ".webp" -> "image/webp";
-      case ".gif" -> "image/gif";
-      default -> "image/jpeg";
-    };
   }
 
   @Override

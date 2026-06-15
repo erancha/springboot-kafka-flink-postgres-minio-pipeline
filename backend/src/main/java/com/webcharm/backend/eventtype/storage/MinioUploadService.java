@@ -1,7 +1,8 @@
 package com.webcharm.backend.eventtype.storage;
 
-import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import com.webcharm.backend.storage.ObjectStoreException;
+import com.webcharm.contract.eventtype.image.ImageFormat;
+import com.webcharm.contract.eventtype.image.ImageObjectKey;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
@@ -9,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -35,8 +35,8 @@ public class MinioUploadService implements ImageUploadService {
    */
   public String upload(UUID id, Instant eventTime, MultipartFile file) throws IOException {
     String contentType = file.getContentType() != null ? file.getContentType() : "image/jpeg";
-    String date = DateTimeFormatter.ISO_LOCAL_DATE.format(eventTime.atZone(ZoneOffset.UTC));
-    String objectKey = "images/" + date + "/" + id + guessExtension(contentType);
+    String objectKey = ImageObjectKey.of(
+        eventTime.atZone(ZoneOffset.UTC).toLocalDate(), id, ImageFormat.extensionForContentType(contentType));
 
     // getInputStream() IOException propagates directly (stream open failure is not a MinIO error).
     // All putObject exceptions are wrapped as ObjectStoreException (MinIO failure).
@@ -63,16 +63,5 @@ public class MinioUploadService implements ImageUploadService {
     } catch (Exception e) {
       throw new ObjectStoreException("MinIO delete failed for objectKey=" + objectKey, e);
     }
-  }
-
-  private static String guessExtension(String contentType) {
-    String ct = contentType.toLowerCase();
-    if (ct.contains("png"))
-      return ".png";
-    if (ct.contains("webp"))
-      return ".webp";
-    if (ct.contains("gif"))
-      return ".gif";
-    return ".jpg";
   }
 }
