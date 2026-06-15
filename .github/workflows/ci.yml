@@ -25,5 +25,7 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # -pl <module> -am builds the shared contract-eventtype module from source first; the consumer
+      # modules depend on it and it is not published to a remote repository.
       - name: Run unit tests
-        run: mvn -B -f ${{ matrix.module }}/pom.xml clean test
+        run: mvn -B -f pom.xml -pl ${{ matrix.module }} -am clean test
