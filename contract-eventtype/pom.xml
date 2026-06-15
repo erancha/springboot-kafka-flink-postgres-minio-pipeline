@@ -7,11 +7,10 @@
   <version>1.0.0</version>
   <name>contract-eventtype</name>
 
-  <!-- The eventtype pipeline's contract: the wire types its backend and Flink job must agree on. Per
-       pipeline, not global, so a future pipeline carries its own contract rather than reusing these.
-       Deliberately has no Spring, Flink, or Jackson dependency: it is bundled into the Flink fat jar
-       and pulled into the Spring context, so any heavy or version-bearing dependency here would
-       couple the two runtimes. Keep it pure Java. -->
+  <!-- The eventtype pipeline's contract: the wire types its backend and Flink job must agree on. No
+       Spring, Flink, or Jackson dependency, because it is bundled into the Flink fat jar and pulled
+       into the Spring context; a heavy or version-bearing dependency here would couple the two
+       runtimes. Keep it pure Java. -->
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
