@@ -57,7 +57,7 @@ case "$MODE" in
     ;;
   local)
     ensure_java21
-    (cd "$ROOT_DIR/backend" && mvn -q package -DskipTests)
+    mvn -q -f "$ROOT_DIR/pom.xml" -pl backend -am package -DskipTests
     # Identifies only the line this script owns, so cleanup never touches a pre-existing 'kafka' entry.
     HOSTS_MARKER="# managed by start-backend.sh"
     cleanup() { sudo sed -i "\|${HOSTS_MARKER}|d" /etc/hosts; }
