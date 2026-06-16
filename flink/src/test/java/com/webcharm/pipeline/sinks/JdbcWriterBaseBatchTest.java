@@ -43,64 +43,69 @@ class JdbcWriterBaseBatchTest {
 
   @Test
   void construction_disablesAutoCommit() throws Exception {
-    new TestWriter(conn, 5);
-    verify(conn).setAutoCommit(false);
+    try (TestWriter w = new TestWriter(conn, 5)) {
+      verify(conn).setAutoCommit(false);
+    }
   }
 
   @Test
   void buffersUntilBatchSize_thenFlushesOnceAndCommits() throws Exception {
-    TestWriter w = new TestWriter(conn, 3);
+    try (TestWriter w = new TestWriter(conn, 3)) {
+      assertTrue(w.write("a").isEmpty());
+      assertTrue(w.write("b").isEmpty());
+      verify(stmt, never()).executeBatch();
+      verify(conn, never()).commit();
 
-    assertTrue(w.write("a").isEmpty());
-    assertTrue(w.write("b").isEmpty());
-    verify(stmt, never()).executeBatch();
-    verify(conn, never()).commit();
+      assertTrue(w.write("c").isEmpty());
 
-    assertTrue(w.write("c").isEmpty());
-
-    verify(stmt, times(3)).addBatch();
-    verify(stmt, times(1)).executeBatch();
-    verify(conn, times(1)).commit();
+      verify(stmt, times(3)).addBatch();
+      verify(stmt, times(1)).executeBatch();
+      verify(conn, times(1)).commit();
+    }
   }
 
   @Test
   void flush_writesBufferedRemainder() throws Exception {
-    TestWriter w = new TestWriter(conn, 100);
-    w.write("a");
-    w.write("b");
-    verify(stmt, never()).executeBatch();
+    try (TestWriter w = new TestWriter(conn, 100)) {
+      w.write("a");
+      w.write("b");
+      verify(stmt, never()).executeBatch();
 
-    assertTrue(w.flush().isEmpty());
+      assertTrue(w.flush().isEmpty());
 
-    verify(stmt, times(2)).addBatch();
-    verify(stmt).executeBatch();
-    verify(conn).commit();
+      verify(stmt, times(2)).addBatch();
+      verify(stmt).executeBatch();
+      verify(conn).commit();
+    }
   }
 
   @Test
   void flush_emptyBuffer_isNoOp() throws Exception {
-    TestWriter w = new TestWriter(conn, 5);
-    assertTrue(w.flush().isEmpty());
-    verify(stmt, never()).executeBatch();
-    verify(conn, never()).commit();
+    try (TestWriter w = new TestWriter(conn, 5)) {
+      assertTrue(w.flush().isEmpty());
+      verify(stmt, never()).executeBatch();
+      verify(conn, never()).commit();
+    }
   }
 
   /** A permanent batch failure replays the batch row-by-row; the offending row is returned for DLQ. */
   @Test
   void permanentBatchFailure_isolatesPoisonRow_andReturnsIt() throws Exception {
-    TestWriter w = new TestWriter(conn, 3);
-    // 23514 = check_violation (permanent). Batch fails, then per-row replay: a ok, b poison, c ok.
-    when(stmt.executeBatch()).thenThrow(new BatchUpdateException("violation", "23514", new int[] {}));
-    when(stmt.executeUpdate())
-        .thenReturn(1)
-        .thenThrow(new SQLException("violation", "23514"))
-        .thenReturn(1);
+    try (TestWriter w = new TestWriter(conn, 3)) {
+      // 23514 = check_violation (permanent). Batch fails, then per-row replay: a ok, b poison, c ok.
+      when(stmt.executeBatch())
+          .thenThrow(new BatchUpdateException("violation", "23514", new int[] {}));
+      when(stmt.executeUpdate())
+          .thenReturn(1)
+          .thenThrow(new SQLException("violation", "23514"))
+          .thenReturn(1);
 
-    w.write("a");
-    w.write("b");
-    List<JdbcWriter.FailedRow<String>> failed = w.write("c");
+      w.write("a");
+      w.write("b");
+      List<JdbcWriter.FailedRow<String>> failed = w.write("c");
 
-    assertEquals(1, failed.size());
-    assertEquals("b", failed.get(0).value());
+      assertEquals(1, failed.size());
+      assertEquals("b", failed.get(0).value());
+    }
   }
 }
