@@ -350,7 +350,7 @@ services:
     # the job parallelism, not merely until the JobManager REST answers. Submitting against a
     # JobManager whose TaskManager has not yet registered its slots races the scheduler into a
     # startup restart.
-    command: ["/bin/bash", "-lc", "until s=$$(curl -fsS http://flink-jobmanager:8081/overview 2>/dev/null | grep -oE 'slots-total[^0-9]*[0-9]+' | tr -cd '0-9'); [ $${s:-0} -ge ${PIPELINE_PARALLELISM} ]; do echo 'waiting for task slots to register...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
+    command: ["/bin/bash", "-lc", "until s=$$(curl -fsS http://flink-jobmanager:8081/overview 2>/dev/null | grep -oE 'slots-total[^0-9]*[0-9]+' | tr -cd '0-9'); [ $${s:-0} -ge ${PIPELINE_PARALLELISM} ]; do echo 'waiting for task slots to register...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.eventtype.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
 
   # React UI (served via Nginx) used to submit IMAGE/DATA events to the backend API.
   ui:

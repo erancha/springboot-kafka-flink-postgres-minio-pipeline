@@ -22,8 +22,8 @@ their own usage via `-h`/`--help` — consult that rather than relying on flags 
 - `sql-helper.sh` — interactive psql, inline SQL (`-c`), or a host SQL file (`-f`) against Postgres
 - `minio-helper.sh` — list (`ls`) / print (`cat`) MinIO bucket objects
 - `test.sh` — run the test suites
-- `send-event.sh` — send one DATA and/or IMAGE event and show where it landed
-- `jmeter-helper.sh` — load-test backend ingestion with JMeter (`--threads`, `--iterations`)
+- `eventtype/send-event.sh` — send one DATA and/or IMAGE event and show where it landed
+- `jmeter-helper.sh` — load-test a pipeline's backend ingestion with JMeter (`--threads`, `--iterations`, `--pipeline`)
 
 ## Architecture & Data Flow
 
@@ -57,7 +57,7 @@ The Flink job is submitted by the `flink-job` Docker service at startup and runs
 
 - **Kafka topic `events`**: single topic, event id used as partition key (ordering per-event, parallelism across events)
 - **Backend validation split**: HTTP-level validation (Bean Validation on `EventRequest`) is separate from business validation in `EventController`
-- **Flink topology**: the fan-out by `eventType`, async MinIO enrichment, tumbling-window aggregations, and single dead-letter path are defined and documented in `flink/src/main/java/com/webcharm/pipeline/StreamingJob.java` (class Javadoc + inline comments)
+- **Flink topology**: the fan-out by `eventType`, async MinIO enrichment, tumbling-window aggregations, and single dead-letter path are defined and documented in `flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java` (class Javadoc + inline comments)
 - **Nginx** (`frontend/nginx.conf`): proxies `/api/` to `backend:8030` in production; Vite dev server (`vite.config.ts`) proxies to `localhost:8030` during local development
 - **No ZooKeeper**: Kafka runs in KRaft mode
 

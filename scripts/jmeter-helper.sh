@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Load-test the backend's POST /api/events ingestion path with Apache JMeter.
-# Drives the jmeter/backend-load.jmx plan, which floods the endpoint with unique
-# DATA events and asserts a 2xx per request. Use send-event.sh for single-shot,
-# end-to-end (Flink + MinIO) checks; this tool is purely about ingestion throughput.
+# Load-test a pipeline's POST /api/events ingestion path with Apache JMeter.
+# Drives that pipeline's jmeter/<pipeline>/backend-load.jmx plan (default pipeline: eventtype),
+# flooding the endpoint with unique events and asserting a 2xx per request. Use the pipeline's
+# send-event.sh for single-shot, end-to-end checks; this tool is purely about ingestion throughput.
 # Usage: jmeter-helper.sh [options]
 #   -t, --threads N      concurrent virtual users   (default 10)
 #   -i, --iterations N   requests per thread         (default 10)
 #       --backend-host H target a backend on another host         (default localhost)
+#       --pipeline NAME  pipeline whose plan and preflight sender to use (default eventtype)
 #       --advise N       sample docker stats over an N-minute window covering the run,
 #                        then recommend memory/parallelism knob changes from the peaks
 #       --skip-preflight skip the send-event.sh pipeline check; flood the backend
@@ -26,7 +27,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
@@ -34,12 +35,12 @@ JMETER_VERSION=5.6.3
 JMETER_HOME_DIR="$ROOT_DIR/jmeter"
 RUNTIME_DIR="$JMETER_HOME_DIR/.runtime"
 RESULTS_DIR="$JMETER_HOME_DIR/results"
-TEST_PLAN="$JMETER_HOME_DIR/backend-load.jmx"
 DOWNLOAD_BASE="https://archive.apache.org/dist/jmeter/binaries"
 
 THREADS=10
 ITERATIONS=10
 BACKEND_HOST=localhost
+PIPELINE=eventtype
 SKIP_PREFLIGHT=false
 ADVISE_MINUTES=""
 while [[ $# -gt 0 ]]; do
@@ -47,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     -t|--threads)     THREADS="${2:-}"; shift 2 ;;
     -i|--iterations)  ITERATIONS="${2:-}"; shift 2 ;;
     --backend-host)   BACKEND_HOST="${2:-}"; shift 2 ;;
+    --pipeline)       PIPELINE="${2:-}"; shift 2 ;;
     --advise)         ADVISE_MINUTES="${2:-}"; shift 2 ;;
     --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -61,6 +63,12 @@ for pair in "threads:$THREADS" "iterations:$ITERATIONS"; do
 done
 
 [[ -n "$BACKEND_HOST" ]] || { echo "--backend-host requires a non-empty value" >&2; exit 1; }
+[[ -n "$PIPELINE" ]] || { echo "--pipeline requires a non-empty value" >&2; exit 1; }
+
+# Per-pipeline artifacts: the JMeter plan flooded at the backend, and the single-shot sender used as
+# the downstream preflight. A new pipeline drops both under jmeter/<pipeline>/ and scripts/<pipeline>/.
+TEST_PLAN="$JMETER_HOME_DIR/$PIPELINE/backend-load.jmx"
+PREFLIGHT_SENDER="$SCRIPT_DIR/$PIPELINE/send-event.sh"
 
 # A 0-minute window advises on the load run alone (no observation beyond it).
 if [[ -n "$ADVISE_MINUTES" && ! "$ADVISE_MINUTES" =~ ^[0-9]+$ ]]; then
@@ -278,7 +286,7 @@ BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}/api/events"
 
 resolve_jmeter
 
-# Preflight via send-event.sh (its default exercises both DATA and IMAGE end-to-end),
+# Preflight via the pipeline's send-event.sh (a single-shot, end-to-end check),
 # so a run never floods a backend whose downstream is broken. --skip-preflight bypasses
 # this to deliberately load an ingestion path whose downstream (Flink/MinIO) is unhealthy.
 if [[ "$SKIP_PREFLIGHT" == true ]]; then
@@ -286,7 +294,11 @@ if [[ "$SKIP_PREFLIGHT" == true ]]; then
 elif [[ "$BACKEND_HOST" != localhost && "$BACKEND_HOST" != 127.0.0.1 && "$BACKEND_HOST" != "::1" ]]; then
   # send-event.sh posts to localhost and verifies the local pipeline; it cannot reach a remote backend.
   echo "→ Preflight skipped: --backend-host ${BACKEND_HOST} is remote, which send-event.sh cannot validate."
-elif ! "$SCRIPT_DIR/send-event.sh"; then
+elif [[ ! -x "$PREFLIGHT_SENDER" ]]; then
+  echo "✗ Preflight sender not found for --pipeline ${PIPELINE}: $PREFLIGHT_SENDER" >&2
+  echo "  Re-run with --skip-preflight to load the backend anyway." >&2
+  exit 1
+elif ! "$PREFLIGHT_SENDER"; then
   echo "✗ Preflight failed — not starting the load run. See output above." >&2
   echo "  Re-run with --skip-preflight to load the backend anyway." >&2
   exit 1

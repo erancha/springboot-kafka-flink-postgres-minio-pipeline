@@ -22,7 +22,7 @@ The project has been load-tested at **~10K ingestion req/s** over a multi-hour r
 with load generation, ingestion, and the processing pipeline as distinct roles across networked
 machines — and Flink draining the resulting Kafka backlog into Postgres at
 **~12K events/s**.
-See [Load testing](docs/TESTING.md#load-testing--ingestion-vs-drain) for the measured numbers.
+See [Load testing](docs/eventtype/TESTING.md#load-testing--ingestion-vs-drain) for the measured numbers.
 
 ### Out of scope
 
@@ -30,9 +30,9 @@ This is an exercise project focused on the data path's failure handling, not a p
 
 - **Authentication / authorization** — the ingestion edge (`POST /api/events` and the React UI) is an unauthenticated local tester, not a hardened production boundary: no login, API key, tenant isolation, or rate limiting, with the SSRF allowlist as the only request-level guard.
 - **Secrets management & transport security** — credentials are supplied via a gitignored `.env`, but there is no Vault / Secrets Manager integration or rotation, and inter-service traffic on the local Docker network is plaintext (no TLS).
-- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/PIPELINE_FLOW.md#dlq-operations).
-- **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](docs/PIPELINE_FLOW.md#out-of-scope).
-- **Production paging** — basic Flink-health email alerts exist (see [Observability](docs/PIPELINE_FLOW.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints, consumer lag, or the DLQ.
+- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/eventtype/PIPELINE_FLOW.md#dlq-operations).
+- **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](docs/eventtype/PIPELINE_FLOW.md#out-of-scope).
+- **Production paging** — basic Flink-health email alerts exist (see [Observability](docs/eventtype/PIPELINE_FLOW.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints, consumer lag, or the DLQ.
 
 ## Overview
 
@@ -56,15 +56,15 @@ pipeline. Events flow one direction — Frontend → Backend → Kafka → Flink
   - `IMAGE` events **always** land in MinIO (`images/{date}/{id}.{ext}`) — whether uploaded as a
     file (stored by the backend at ingestion) or supplied as a URL (fetched and **cloned** into
     MinIO by Flink; only the object key is persisted to Postgres, never the source URL).
-    [Why clone rather than reference](docs/PIPELINE_FLOW.md#async-image-enrichment): durable and
+    [Why clone rather than reference](docs/eventtype/PIPELINE_FLOW.md#async-image-enrichment): durable and
     self-contained.
   - `DATA` events are stored in Postgres — written in per-slot
-    [committed batches](docs/PIPELINE_FLOW.md#batched-postgres-writes) for throughput, flushed every
+    [committed batches](docs/eventtype/PIPELINE_FLOW.md#batched-postgres-writes) for throughput, flushed every
     checkpoint so the delivery guarantee is unchanged.
 
 Everything after Kafka is the Flink job's responsibility
-([`StreamingJob.java`](flink/src/main/java/com/webcharm/pipeline/StreamingJob.java)); see
-[`docs/PIPELINE_FLOW.md`](docs/PIPELINE_FLOW.md).
+([`StreamingJob.java`](flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java)); see
+[`docs/eventtype/PIPELINE_FLOW.md`](docs/eventtype/PIPELINE_FLOW.md).
 
 ## Architecture
 
@@ -85,7 +85,7 @@ The pipeline services and their URLs are described in the [Overview](#overview);
 Requires Docker Desktop and Docker Compose v2. Run the Bash scripts from any Linux shell (WSL included):
 
 ```bash
-chmod +x scripts/*.sh   # if not already executable
+find scripts -name '*.sh' -exec chmod +x {} +   # if not already executable
 ./scripts/start.sh
 ```
 
@@ -94,12 +94,12 @@ Then open the [UI tester](#overview) and send events.
 Additional commands:
 
 ```bash
-./scripts/start.sh --help               # start options (--restart, --rebuild)
-./scripts/docker-helper.sh --help       # build images (--build), stop the stack (--stop), or stream logs (--logs)
-./scripts/test.sh --help                # run tests; see docs/TESTING.md for suite details
-./scripts/send-event.sh --help          # send one DATA and/or IMAGE event and show where it landed
+./scripts/start.sh --help                        # start options (--restart, --rebuild)
+./scripts/docker-helper.sh --help                # build images (--build), stop the stack (--stop), or stream logs (--logs)
+./scripts/test.sh --help                         # run tests; see docs/TESTING.md for suite details
+./scripts/eventtype/send-event.sh --help         # send one DATA and/or IMAGE event and show where it landed
 
-./scripts/compare-images.sh             # compare image counts in MinIO vs PostgreSQL
+./scripts/eventtype/compare-images.sh            # compare image counts in MinIO vs PostgreSQL
 ```
 
 ## Testing
@@ -108,4 +108,4 @@ Unit, component, and integration test suites and how to run them are documented 
 
 ## Analytics
 
-Post-hoc vs. Flink-pre-aggregated queries, the windowing behavior, and how to run them (CLI and Grafana) are documented in [ANALYTICS.md](docs/ANALYTICS.md).
+Post-hoc vs. Flink-pre-aggregated queries, the windowing behavior, and how to run them (CLI and Grafana) are documented in [ANALYTICS.md](docs/eventtype/ANALYTICS.md).

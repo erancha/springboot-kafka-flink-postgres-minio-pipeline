@@ -257,7 +257,7 @@
               <createDependencyReducedPom>false</createDependencyReducedPom>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>com.webcharm.pipeline.StreamingJob</mainClass>
+                  <mainClass>com.webcharm.pipeline.eventtype.StreamingJob</mainClass>
                 </transformer>
                 <!-- Merges META-INF/services/* files so multiple Jackson modules are all registered -->
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>

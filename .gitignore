@@ -14,7 +14,6 @@ __pycache__/
 
 docs/superpowers/
 docs/*-code-eval-*.md
-docs/batched-jdbc-sink-tradeoffs.md
 
 # Environment files — never commit credentials
 .env
