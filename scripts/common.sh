@@ -20,7 +20,7 @@ compose() {
 # frontend build, or the UI's example pre-fill fetches 404 and the empty {} default is submitted.
 stage_payload_schema() {
   mkdir -p "$ROOT_DIR/frontend/public"
-  cp "$ROOT_DIR/backend/src/main/resources/event-payload-schema.json" \
+  cp "$ROOT_DIR/backend/src/main/resources/eventtype/event-payload-schema.json" \
      "$ROOT_DIR/frontend/public/event-payload-schema.json"
 }
 

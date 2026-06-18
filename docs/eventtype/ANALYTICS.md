@@ -1,6 +1,6 @@
 # Analytics Queries
 
-All analytics queries are defined in [infra/postgres/analytics.sql](../../infra/postgres/analytics.sql) and query PostgreSQL; the tables they read are created in [infra/postgres/init.sql](../../infra/postgres/init.sql). They differ in _when_ they are computed:
+All analytics queries are defined in [infra/postgres/eventtype/analytics.sql](../../infra/postgres/eventtype/analytics.sql) and query PostgreSQL; the tables they read are created in [infra/postgres/eventtype/init.sql](../../infra/postgres/eventtype/init.sql). They differ in _when_ they are computed:
 
 **Post-hoc analytics** (computed at query time):
 
@@ -26,7 +26,7 @@ Take the per-type count ([`StreamingJob.buildEventTypeCounts`](../../flink/src/m
 Via CLI:
 
 ```bash
-./scripts/sql-helper.sh -f infra/postgres/analytics.sql
+./scripts/sql-helper.sh -f infra/postgres/eventtype/analytics.sql
 ```
 
 Via Grafana dashboard:

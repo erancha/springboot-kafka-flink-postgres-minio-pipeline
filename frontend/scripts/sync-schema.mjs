@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = resolve(here, '../../backend/src/main/resources/event-payload-schema.json');
+const source = resolve(here, '../../backend/src/main/resources/eventtype/event-payload-schema.json');
 const dest = resolve(here, '../public/event-payload-schema.json');
 
 if (!existsSync(source)) {

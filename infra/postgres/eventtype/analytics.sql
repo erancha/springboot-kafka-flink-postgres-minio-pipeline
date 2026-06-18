@@ -4,7 +4,7 @@
 -- others query a table pre-aggregated by Flink in real time.
 --
 -- Run with:
---   ./scripts/sql-file.sh infra/postgres/analytics.sql
+--   ./scripts/sql-helper.sh -f infra/postgres/eventtype/analytics.sql
 
 -- \echo '== [processed_events] Post-hoc: Count events by type (computed at query time) =='
 -- SELECT event_type, COUNT(*)

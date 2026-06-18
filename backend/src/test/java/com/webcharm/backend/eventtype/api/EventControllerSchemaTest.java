@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(PayloadSchemaValidator.class)
 @TestPropertySource(properties = {
     "IMAGE_URL_ALLOWED_HOSTS=cdn.example.com",
-    "EVENT_PAYLOAD_SCHEMA=classpath:event-payload-schema.json"
+    "EVENT_PAYLOAD_SCHEMA=classpath:eventtype/event-payload-schema.json"
 })
 class EventControllerSchemaTest {
 
