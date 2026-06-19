@@ -14,7 +14,7 @@ groups:
       - uid: backend-target-down
         title: Backend target down
         condition: C
-        for: 1m
+        for: 5m
         noDataState: Alerting
         execErrState: Error
         labels:
