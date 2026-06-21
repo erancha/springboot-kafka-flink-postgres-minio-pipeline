@@ -94,10 +94,13 @@ The tables below catalog, per stage, every handled failure mode and the job's co
 
 ## Sequence Diagram
 
-The async image operator and the bounded JDBC write keep external I/O off the
-operator task thread: the task thread never blocks on a fetch, upload, or query,
-and every external call is time-bounded under the checkpoint budget, so a
-slow/bad image or a slow/hung DBMS cannot stall checkpoint barriers. (Scope: the
+The async image operator and the bounded JDBC write both keep external I/O from
+stalling checkpoint barriers, by opposite means. The image fetch and MinIO upload
+run as Flink async I/O, so the operator task thread is never parked on that I/O.
+The JDBC write is synchronous: the task thread does block on each query, but only
+within a time bound (`socketTimeout`/`connectTimeout`/query timeout) kept under the
+checkpoint budget. Either way a slow/bad image or a slow/hung DBMS cannot stall
+checkpoint barriers. (Scope: the
 event-processing path; the windowed branches are covered in
 [`ANALYTICS.md`](ANALYTICS.md).)
 
@@ -123,7 +126,7 @@ sequenceDiagram
         ASYNC->>SPLIT: EnrichResult
         alt enrichment success
             SPLIT->>PG: INSERT processed_events
-            Note over PG: bounded socket, query, connect timeout, task thread never blocks
+            Note over PG: synchronous JDBC — task thread blocks only within a bounded socket, query, connect timeout
             opt permanent JDBC failure (constraint or invalid JSONB)
                 PG->>KDLQ: DlqRecord
             end
