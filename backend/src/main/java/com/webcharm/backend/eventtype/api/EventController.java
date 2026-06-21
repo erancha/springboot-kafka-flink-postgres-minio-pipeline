@@ -1,6 +1,7 @@
 package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
+import com.webcharm.backend.eventtype.crypto.PayloadEncryptionService;
 import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import com.webcharm.backend.eventtype.model.EventRequest;
 import com.webcharm.backend.eventtype.model.EventResponse;
@@ -44,12 +45,14 @@ public class EventController {
   private final EventProducer eventProducer;
   private final ImageUploadService imageUploadService;
   private final PayloadSchemaValidator payloadSchemaValidator;
+  private final PayloadEncryptionService payloadEncryptionService;
 
   public EventController(EventProducer eventProducer, ImageUploadService imageUploadService,
-      PayloadSchemaValidator payloadSchemaValidator) {
+      PayloadSchemaValidator payloadSchemaValidator, PayloadEncryptionService payloadEncryptionService) {
     this.eventProducer = eventProducer;
     this.imageUploadService = imageUploadService;
     this.payloadSchemaValidator = payloadSchemaValidator;
+    this.payloadEncryptionService = payloadEncryptionService;
   }
 
   @PostConstruct
@@ -67,9 +70,12 @@ public class EventController {
     } else {
       payloadSchemaValidator.validate(request.getPayload());
     }
+    
     UUID id = UuidV7.next();
     Instant now = Instant.now();
-    eventProducer.send(topic, id.toString(), request.toEventMap(id, now, "ui"));
+    Map<String, Object> event = request.toEventMap(id, now, "ui");
+    payloadEncryptionService.encryptPayload(event);
+    eventProducer.send(topic, id.toString(), event);
     return new EventResponse(id.toString(), now.toString());
   }
 

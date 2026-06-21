@@ -1,6 +1,7 @@
 package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
+import com.webcharm.backend.eventtype.crypto.PayloadEncryptionService;
 import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Kept separate from EventControllerTest because the allowlist property is class-scoped in @WebMvcTest.
  */
 @WebMvcTest(EventController.class)
-@Import(PayloadSchemaValidator.class)
+@Import({PayloadSchemaValidator.class, PayloadEncryptionService.class})
 class EventControllerEmptyAllowlistTest {
 
     @Autowired MockMvc mvc;

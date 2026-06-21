@@ -2,6 +2,7 @@ package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
 import com.webcharm.backend.kafka.KafkaPublishException;
+import com.webcharm.backend.eventtype.crypto.PayloadEncryptionService;
 import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import com.webcharm.backend.storage.ObjectStoreException;
 import java.io.IOException;
@@ -35,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * IMAGE_URL_ALLOWED_HOSTS is set to "cdn.example.com" so imageUrl tests can verify allowed vs blocked hosts.
  */
 @WebMvcTest(EventController.class)
-@Import(PayloadSchemaValidator.class)
+@Import({PayloadSchemaValidator.class, PayloadEncryptionService.class})
 @TestPropertySource(properties = "IMAGE_URL_ALLOWED_HOSTS=cdn.example.com")
 class EventControllerTest {
 

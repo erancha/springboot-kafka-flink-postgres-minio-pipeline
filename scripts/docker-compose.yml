@@ -250,6 +250,8 @@ services:
       - IMAGE_URL_ALLOWED_HOSTS=${IMAGE_URL_ALLOWED_HOSTS}
       - MAX_REQUEST_CONTENT_LENGTH=${MAX_REQUEST_CONTENT_LENGTH}
       - EVENT_PAYLOAD_SCHEMA=${EVENT_PAYLOAD_SCHEMA}
+      # Base64 AES key; when set, DATA payloads are AES-GCM encrypted. Empty disables encryption.
+      - PAYLOAD_ENCRYPTION_KEY=${PAYLOAD_ENCRYPTION_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-}
     ports:
       - "${BACKEND_PORT}:8080"

@@ -46,7 +46,9 @@ pipeline. Events flow one direction — Frontend → Backend → Kafka → Flink
   are checked against an SSRF allowlist at this edge — the trust boundary where user-supplied URLs
   enter — so a disallowed host (e.g. `http://169.254.169.254/`, the cloud-metadata endpoint) never
   reaches Kafka and Flink fetches without re-checking (assumes
-  the backend is the sole producer to `events`).
+  the backend is the sole producer to `events`). Optionally, with `PAYLOAD_ENCRYPTION_KEY` set,
+  `DATA` payloads are AES-256-GCM encrypted here into a self-describing envelope (algorithm,
+  per-message nonce, ciphertext); when unset, encryption is a pass-through.
 - **Kafka** (localhost:9092) — durable event backbone: a single topic (`events`) keyed by event `id`. Both
   event types share one lifecycle, so one topic keeps the pipeline minimal — splitting would pay
   off only with per-type retention, scaling/ACLs, or ownership boundaries. The `id` (UUID)
@@ -60,7 +62,10 @@ pipeline. Events flow one direction — Frontend → Backend → Kafka → Flink
     self-contained.
   - `DATA` events are stored in Postgres — written in per-slot
     [committed batches](docs/eventtype/PIPELINE_FLOW.md#batched-postgres-writes) for throughput, flushed every
-    checkpoint so the delivery guarantee is unchanged.
+    checkpoint so the delivery guarantee is unchanged. An encrypted payload stays encrypted
+    end-to-end: Flink passes the envelope through opaquely (it never needs the key) and persists it to
+    the `payload` column, where a future consumer holding the key decrypts it with the same shared
+    [`PayloadCipher`](contract-eventtype/src/main/java/com/webcharm/contract/eventtype/event/PayloadCipher.java).
 
 Everything after Kafka is the Flink job's responsibility
 ([`StreamingJob.java`](flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java)); see
@@ -94,7 +99,7 @@ Then open the [UI tester](#overview) and send events.
 Additional commands:
 
 ```bash
-./scripts/start.sh --help                        # start options (--restart, --rebuild)
+./scripts/start.sh --help                        # start options; after editing code/env, re-apply with --rebuild <service>
 ./scripts/docker-helper.sh --help                # build images (--build), stop the stack (--stop), or stream logs (--logs)
 ./scripts/test.sh --help                         # run tests; see docs/TESTING.md for suite details
 ./scripts/eventtype/send-event.sh --help         # send one DATA and/or IMAGE event and show where it landed

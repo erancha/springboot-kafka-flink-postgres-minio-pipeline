@@ -36,6 +36,10 @@ app:
   kafka:
     topic: ${KAFKA_TOPIC:events}
     send-timeout-seconds: ${KAFKA_SEND_TIMEOUT_SECONDS:10}
+  payload:
+    encryption:
+      # Base64 AES key; when set, DATA payloads are AES-GCM encrypted before publishing. Empty disables.
+      key: ${PAYLOAD_ENCRYPTION_KEY:}
 
 minio:
   endpoint: http://${MINIO_HOST_LOCAL:localhost}:${MINIO_PORT:9000}

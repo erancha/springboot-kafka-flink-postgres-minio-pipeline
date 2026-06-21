@@ -6,6 +6,12 @@
 -- Run with:
 --   ./scripts/sql-helper.sh -f infra/postgres/eventtype/analytics.sql
 
+-- \echo '== [processed_events] Post-hoc: Last n events =='
+-- SELECT *
+-- FROM processed_events
+-- ORDER BY inserted_at desc
+-- LIMIT 10;
+
 -- \echo '== [processed_events] Post-hoc: Count events by type (computed at query time) =='
 -- SELECT event_type, COUNT(*)
 -- FROM processed_events

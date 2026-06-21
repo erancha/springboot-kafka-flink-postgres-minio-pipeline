@@ -1,6 +1,7 @@
 package com.webcharm.backend.eventtype.api;
 
 import com.webcharm.backend.kafka.EventProducer;
+import com.webcharm.backend.eventtype.crypto.PayloadEncryptionService;
 import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 400 and never reach Kafka.
  */
 @WebMvcTest(EventController.class)
-@Import(PayloadSchemaValidator.class)
+@Import({PayloadSchemaValidator.class, PayloadEncryptionService.class})
 @TestPropertySource(properties = {
     "IMAGE_URL_ALLOWED_HOSTS=cdn.example.com",
     "EVENT_PAYLOAD_SCHEMA=classpath:eventtype/event-payload-schema.json"

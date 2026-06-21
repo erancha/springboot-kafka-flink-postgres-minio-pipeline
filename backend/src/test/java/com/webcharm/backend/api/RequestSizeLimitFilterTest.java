@@ -2,6 +2,7 @@ package com.webcharm.backend.api;
 
 import com.webcharm.backend.eventtype.api.EventController;
 import com.webcharm.backend.eventtype.api.PayloadSchemaValidator;
+import com.webcharm.backend.eventtype.crypto.PayloadEncryptionService;
 import com.webcharm.backend.eventtype.storage.ImageUploadService;
 import com.webcharm.backend.kafka.EventProducer;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * controller or the Kafka producer. The cap is set low here to keep test payloads small.
  */
 @WebMvcTest(EventController.class)
-@Import(PayloadSchemaValidator.class)
+@Import({PayloadSchemaValidator.class, PayloadEncryptionService.class})
 @TestPropertySource(properties = {
     "IMAGE_URL_ALLOWED_HOSTS=cdn.example.com",
     "MAX_REQUEST_CONTENT_LENGTH=80"
