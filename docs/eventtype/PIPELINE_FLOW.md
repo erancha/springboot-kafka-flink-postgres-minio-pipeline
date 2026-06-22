@@ -5,102 +5,17 @@ checkpointing, async image enrichment, the bounded JDBC path, retries, and
 dead-letter routing. (Backend responsibilities are summarized in the project
 [`README.md`](../../README.md).)
 
-## In scope
-
-### Delivery guarantee
-
-The pipeline achieves **effective exactly-once** delivery: Flink triggers a checkpoint every 10s (each must complete within the 60s timeout, else that attempt is aborted); on restart it replays from the last successful checkpoint; idempotent upserts (`ON CONFLICT (id) DO UPDATE` in Postgres, `statObject` existence check in MinIO) absorb any duplicates. Not 2PC.
-
-The upsert keys (`id`, and the `eventTime`-derived MinIO object path) are stable across a replay because parsing is deterministic: `ParseEventFunction` reads `id` and `eventTime` verbatim from the message and routes a record missing either to the DLQ instead of backfilling a generated UUID or wall-clock time. A fabricated key would change on replay and write a duplicate, so the closed-system invariant (the backend always sets both before publishing to the private Kafka topic) is enforced at parse rather than assumed.
-
-### Checkpointing & recovery
-
-- Kafka consumer offsets are committed only on successful checkpoint (`enable.auto.commit=false`), so the committed offset always reflects durably processed state.
-- Flink checkpoints: 10s interval, 60s timeout, 5s minimum pause between checkpoints, one in-flight at a time. Externalized checkpoints (`RETAIN_ON_CANCELLATION`) are kept on disk after cancellation.
-- Restart strategy: exponential back-off (5s initial, 2× multiplier, 10 min cap), indefinite retries.
-
-### Async image enrichment
-
-- Image fetch + MinIO upload runs as a Flink **async I/O** operator (`AsyncDataStream.unorderedWaitWithRetry`). The HTTP fetch is non-blocking; the blocking MinIO SDK calls run on a bounded executor. The operator task thread is never parked on external I/O, so a slow or unresponsive image URL cannot delay checkpoint barriers. Transient failures (HTTP 5xx, timeouts, I/O errors) are retried by the framework with exponential backoff up to a bounded attempt count (`MINIO_ASYNC_MAX_ATTEMPTS`, default 3); on exhaustion they route to the DLQ. Permanent failures (4xx, redirect/SSRF guard, non-image or absent Content-Type, size cap) route to the DLQ without retry.
-- For `imageUrl` events the bytes are **cloned** into MinIO (fetched, then uploaded under our own `images/<date>/<id>` key) and the original URL is dropped — Postgres stores only `image_object_key`, never the source URL. Cloning rather than referencing the source URL is deliberate: it makes pipeline output **durable and self-contained** (a source URL can rot, move, or rate-limit later), gives downstream a **single uniform representation** (both the file-upload and URL sub-paths converge on `image_object_key`, so consumers never branch on URL-vs-object), and yields a **stable byte size** for analytics (a remote URL's content could change underneath us).
-- The image-URL SSRF control is enforced both at ingestion (backend host allowlist) and at fetch: the Flink HTTP client uses `followRedirects(NEVER)`, so an allowlisted host cannot redirect the socket to an internal endpoint.
-
-### Bounded JDBC path
-
-- JDBC connections use a HikariCP pool (pool size 1 per task slot, keepalive every 60s). The JDBC path is **bounded**: `socketTimeout`/`connectTimeout` on the connection, a per-statement query timeout, a reduced pool borrow timeout, and a bounded retry count, so the worst-case Postgres write stays well under the checkpoint timeout. A sustained outage escalates to Flink checkpoint replay under the exponential-backoff restart strategy (indefinite retries, 10-min delay cap).
-- Transient Postgres write errors (connection reset, deadlock) are retried in-operator with exponential backoff before escalating to checkpoint replay. Permanent Postgres failures (constraint violations, invalid JSONB) are **not** retried — they route to the `events-dlq` Kafka topic, so a bad payload cannot cause an infinite restart loop.
-
-### Batched Postgres writes
-
-- The event sink batches: each slot buffers up to `JDBC_BATCH_SIZE` rows (default 500) and commits them as one transaction (`reWriteBatchedInserts` folds them into one multi-row `INSERT`), replacing the per-row round-trip and commit `fsync` that capped throughput. It flushes on fill, on `close()`, and on every checkpoint, so committed offsets never lead unflushed rows. Aggregate sinks stay per-row.
-- Failure semantics are unchanged: idempotent `ON CONFLICT` upserts keep replay safe; transient errors retry the whole batch; a permanent error replays the batch row-by-row so good rows commit and only the bad row goes to the DLQ. A bad row caught during a checkpoint flush (no `Collector` then) is held in operator list state and emitted on the next element, so a restart cannot drop it.
-
-### Startup pre-flight
-
-- Before the job graph is submitted, `PreflightChecks` verifies the MinIO bucket exists (which also exercises endpoint reachability and credentials) and that the `processed_events` table exposes every column the writer uses. A misconfigured deployment (bad credentials, missing bucket, missing column) fails immediately with a clear message instead of starting and thrashing the running pipeline.
-
-### Dead-letter routing
-
-- Unparsable events, events with an unexpected eventType (not DATA/IMAGE), permanent image enrichment failures, and permanent JDBC write failures are all routed to the `events-dlq` Kafka topic rather than crashing the job or triggering infinite restarts.
-
-- The routing paths (parse, image enrichment, image and data Postgres writes, 5-minute per-type counts, 10-minute image-size buckets) are unioned into a single Kafka producer for `events-dlq`. Every `DlqRecord` carries a `stage` field (`DlqStage`: PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, EVENT_TYPE_COUNT_POSTGRES, IMAGE_SIZE_BUCKET_COUNT_POSTGRES) identifying its origin, so a consumer can attribute a dead-letter record to its stage without a per-source sink. One sink couples dead-letter backpressure across the branches; dead-letter volume is low by nature (only failures), so this is acceptable.
-
-- This covers **capture**, not operations: records land in `events-dlq` at-least-once and are metered per stage, but consuming, replaying, and alerting on the topic are out of scope — see [DLQ operations](#dlq-operations).
-
-### Observability
-
-Pipeline health is exported as Prometheus metrics, not just logs. The Flink Prometheus reporter (the `metrics-prometheus` plugin bundled in the `apache/flink:2.2` image) runs on the JobManager and TaskManager at port 9249; a Prometheus container scrapes both, and Grafana renders the pre-provisioned [**Pipeline Health** dashboard](http://localhost:3031/d/pipeline-health) through a Prometheus datasource, provisioned from [`infra/grafana/provisioning/dashboards/eventtype/pipeline-health.json`](../../infra/grafana/provisioning/dashboards/eventtype/pipeline-health.json). It is a Flink-reporter-backed dashboard; the only Kafka signal is the Flink source's consumer lag, not broker-level metrics. The dashboard is split into two rows: **Health** (paging-grade signals — is the pipeline OK at 3am) and **Throughput & performance** (workload shape and latency, deliberately not paging signals).
-
-Health row:
-
-- Reporter-native (no code): Kafka-source consumer lag (`pendingRecords`), job restarts, last-checkpoint duration and failed-checkpoint count, and per-task backpressure / busy time. The paging-grade copy of consumer lag is owned by this row because sustained lag growth is the canonical "falling behind ingest" alarm; a read-only mirror of the same series is repeated in the Throughput row for cross-referencing.
-- Custom counters: `dlq_records`, labelled by the same `DlqStage` carried on every `DlqRecord`, so the `IMAGE_ENRICH` series is the enrichment failure rate. A pass-through `DlqMeterFunction` registers it immediately before the `events-dlq` sink and emits each record unchanged, so metering does not alter dead-letter behavior. `image_retryable_failures` is incremented when `MinioAsyncImageFunction` classifies a transient failure, giving retry pressure on the IMAGE branch.
-
-Throughput & performance row:
-
-- Reporter-native (no code): per-second and cumulative `numRecordsIn` on the `data_to_postgres` and `image_to_postgres` operators, giving the DATA-vs-IMAGE workload split as it enters the Postgres write. Permanent write failures still count here; the per-stage DLQ panel in the Health row carries the failure split. The left column stacks the consumer-lag mirror, events/sec, and the cumulative-by-type counter top-to-bottom (the latter two are the same `numRecordsIn` series as a rate and as a raw counter), so lag, throughput, and total volume for a path read down one column — rising lag while events/sec is flat means the pipeline, not the inbound rate, is the bottleneck.
-- Custom counters on the `minio-enrich-async` operator: `minio_uploads` (successful `putObject` calls) and `minio_upload_nanos` (cumulative upload duration). Average upload latency is derived in Prometheus as `rate(minio_upload_nanos) / rate(minio_uploads)`, and uploads/sec as `rate(minio_uploads)`. Only successful uploads are metered — idempotency hits and backend-uploaded passthrough images perform no `putObject` and are excluded, so the metrics reflect genuine writes.
-
-Deliberate boundaries: the backend is not Micrometer-instrumented (only Kafka/Flink are exported); per-attempt retry counts are not metered because `JdbcWriterBase` has no Flink metric group, and a retries-exhausted outcome is already visible as `dlq_records` volume for its stage.
-
-Alerting: a minimal set of Grafana-managed, file-provisioned rules ([`infra/grafana/provisioning/alerting/`](../../infra/grafana/provisioning/alerting/)) email on three Flink-health basics — a JobManager or TaskManager scrape target down, no job in RUNNING state, and restart-looping. Evaluation is Grafana's own engine, not a standalone Prometheus Alertmanager; the recipient and SMTP relay come from `.env`. Checkpoint-failure and consumer-lag/backpressure rules are deferred (lag flaps under bursty load), and DLQ alerting stays out of scope. An end-to-end test ([`scripts/alert-test.sh`](../../scripts/alert-test.sh)) verifies a real outage drives the target-down rule to firing.
-
-## Failure handling by stage
-
-The tables below catalog, per stage, every handled failure mode and the job's concrete response — the case-level backing for the reliability behaviors described above. The Class column drives the response: Permanent routes to the DLQ without retry, Transient is retried with bounded backoff before the DLQ (the exact mechanism — framework async retry or in-operator retry then checkpoint replay — differs per stage and is given in the row), and startup misconfiguration is caught by pre-flight before any event is processed.
-
-### Parse stage (`ParseEventFunction`)
-
-| #   | Failure                                                   | Class      | Current behavior                                                                                                                                                                                                                                                   |     |
-| --- | --------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
-| 1   | Bad JSON / missing required field / bad timestamp         | Permanent  | Routed to DLQ via `PARSE_ERROR_TAG`                                                                                                                                                                                                                                |     |
-| 2   | eventType not DATA/IMAGE (invalid value or missing field) | Unexpected | Cannot originate from the backend (eventType is a validated enum, normalized to DATA/IMAGE before Kafka; Kafka is private). `ParseEventFunction` folds any such value to the `UNEXPECTED` sentinel, logs an error, and routes it to the DLQ via `PARSE_ERROR_TAG`. |     |
-
-### Image enrichment stage (`MinioAsyncImageFunction` + `EnrichSplitFunction`)
-
-| #   | Failure                                                                                          | Class     | Current behavior                                                                                                                                                                                                   |     |
-| --- | ------------------------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
-| 3   | Bad/blank URL / disallowed scheme / HTTP 3xx (redirect/SSRF guard) / HTTP 4xx / non-image or absent Content-Type / response > 10 MB | Permanent | `EnrichResult.permanentFailure` → `EnrichSplitFunction` → DLQ; never retried                                                                                                                                       |     |
-| 4   | HTTP 5xx / connect or read timeout / I/O error                                                   | Transient | `EnrichResult.retryableFailure`; framework `AsyncRetryStrategy` retries with exponential backoff up to a bounded attempt count; routed to DLQ if exhausted                                                         |     |
-| 5   | MinIO auth / bucket missing (startup); disk full (runtime)                                       | Misconfig | Auth or missing bucket: `PreflightChecks` fails the job at startup before any event is processed. Disk full (a runtime condition, not pre-checkable): treated as a retryable failure → retried → DLQ on exhaustion |     |
-
-### Postgres write stage (`AbstractPostgresWriteFunction` / `JdbcWriterBase`)
-
-| #   | Failure                                         | Class     | Current behavior                                                                                                                                                                                                                                                     |     |
-| --- | ----------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| 6   | Constraint violation / invalid JSONB            | Permanent | Permanent batch failure → row-by-row isolation; good rows commit, the offending row is emitted as a `DlqRecord` (stashed to list state if found during a checkpoint flush); no replay loop                                                                            |     |
-| 7   | Connection timeout / refused / deadlock         | Transient | Bounded in-operator retry (default 2 attempts, exponential backoff, reconnect) with `socketTimeout`/query-timeout caps; escalates to Flink checkpoint replay under the exponential-backoff restart strategy (indefinite retries, 10-min delay cap) only if exhausted |     |
-| 8   | Auth failure / schema mismatch (missing column) | Misconfig | Non-transient SQLState → `PermanentJdbcException` → DLQ with `log.error`                                                                                                                                                                                             |     |
+**Contents:** [Sequence Diagram](#sequence-diagram) · [In scope](#in-scope) · [Out of scope](#out-of-scope) · [Building blocks](#building-blocks) · [Appendix: Failure handling by stage](#appendix-failure-handling-by-stage)
 
 ## Sequence Diagram
 
-The async image operator and the bounded JDBC write both keep external I/O from
-stalling checkpoint barriers, by opposite means. The image fetch and MinIO upload
-run as Flink async I/O, so the operator task thread is never parked on that I/O.
-The JDBC write is synchronous: the task thread does block on each query, but only
-within a time bound (`socketTimeout`/`connectTimeout`/query timeout) kept under the
-checkpoint budget. Either way a slow/bad image or a slow/hung DBMS cannot stall
-checkpoint barriers. (Scope: the
+A single task thread both processes records and handles the checkpoint barrier — there is no
+separate thread for the barrier. So if that thread is blocked waiting
+on slow external I/O, it cannot reach the barrier, and the checkpoint can miss its budget (e.g. 60s). Both I/O paths prevent this, by opposite means: the image fetch
+and MinIO upload run as Flink async I/O, so the task thread never waits on them at all;
+the JDBC write does wait, but only within a strict time bound
+(`socketTimeout`/`connectTimeout`/query timeout) kept under the checkpoint budget.
+Either way a slow/bad image or a slow/hung DBMS cannot hold up a checkpoint. (Scope: the
 event-processing path; the windowed branches are covered in
 [`ANALYTICS.md`](ANALYTICS.md).)
 
@@ -146,6 +61,62 @@ sequenceDiagram
     end
 ```
 
+## In scope
+
+### Delivery guarantee
+
+The pipeline achieves **effective exactly-once** delivery: Flink triggers a checkpoint on a fixed interval (e.g. 10s), each of which must complete within a timeout (e.g. 60s) or the attempt is aborted; on restart it replays from the last successful checkpoint; idempotent upserts (`ON CONFLICT (id) DO UPDATE` in Postgres, `statObject` existence check in MinIO) absorb any duplicates. Not 2PC.
+
+The upsert keys (`id`, and the `eventTime`-derived MinIO object path) stay identical across a replay because `ParseEventFunction` reads `id` and `eventTime` verbatim from the message; the same input always yields the same keys. A record missing either field routes to the DLQ. This enforces the closed-system invariant — the backend always sets both before publishing to the private Kafka topic — at parse time, so every record reaching the sinks has replay-stable keys that idempotent upserts can dedupe.
+
+### Startup pre-flight
+
+- Before the job graph is submitted, `PreflightChecks` verifies the MinIO bucket exists (which also exercises endpoint reachability and credentials) and that the `processed_events` table exposes every column the writer uses. A misconfigured deployment (bad credentials, missing bucket, missing column) fails immediately with a clear message instead of starting and thrashing the running pipeline.
+
+### Checkpointing & recovery
+
+- Flink consumes the Kafka `events` topic through its `KafkaSource` connector, which tracks each partition's read position in Flink's own checkpoint state rather than in Kafka's consumer group: on restart it seeks each partition to the offset captured by the last successful checkpoint. Kafka auto-commit is disabled (`enable.auto.commit=false`). Flink still writes offsets back to Kafka, but only on a successful checkpoint and only so monitoring tools can compute consumer lag — how many messages sit between the committed offset and the topic's newest record. That committed offset is for visibility alone; recovery uses the checkpoint, never Kafka's committed offset.
+- Checkpoints run on a fixed interval (e.g. 10s) with a completion timeout (e.g. 60s), a minimum pause between them (e.g. 5s), and one checkpoint in flight at a time; checkpoints are externalized — retained on disk after cancellation (`RETAIN_ON_CANCELLATION`) so a cancelled job can resume from its last snapshot. The authoritative interval, timeout, and pause live in the checkpoint config block of [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java).
+- The restart strategy is exponential back-off (e.g. 5s initial, 2× multiplier, 10-min cap) with indefinite retries; the authoritative values are set alongside the checkpoint config in [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java).
+
+### Bounded JDBC path
+
+- JDBC connections use a HikariCP pool (pool size 1 per task slot, keepalive e.g. every 60s). The JDBC path is **bounded**: `socketTimeout`/`connectTimeout` on the connection, a per-statement query timeout, a reduced pool borrow timeout, and a bounded retry count, so the worst-case Postgres write stays well under the checkpoint timeout. A sustained outage escalates to Flink checkpoint replay under the exponential-backoff restart strategy (indefinite retries, e.g. 10-min delay cap).
+- Transient Postgres write errors (connection reset, deadlock) are retried in-operator with exponential backoff before escalating to checkpoint replay. Permanent Postgres failures (constraint violations, invalid JSONB) are **not** retried — they route to the `events-dlq` Kafka topic, so a bad payload cannot cause an infinite restart loop.
+
+### Batched Postgres writes
+
+- Batching applies only to the high-volume `processed_events` sink (the DATA and IMAGE row writes); the windowed aggregate sinks write per-row, since each window emits only a handful of count rows and has nothing to amortize.
+- For the `processed_events` sink, each slot buffers up to `JDBC_BATCH_SIZE` rows (e.g. 500) and commits them as one transaction (`reWriteBatchedInserts` folds them into one multi-row `INSERT`), so one network round-trip and one commit `fsync` amortize across the whole batch instead of being paid per row. It flushes on fill, on `close()`, and on every checkpoint, so committed offsets never lead unflushed rows.
+- Failure semantics are unchanged: idempotent `ON CONFLICT` upserts keep replay safe; transient errors retry the whole batch; a permanent error replays the batch row-by-row so good rows commit and only the bad row goes to the DLQ. A bad row caught during a checkpoint flush (no `Collector` then) is held in operator list state and emitted on the next element, so a restart cannot drop it.
+
+### Async image enrichment
+
+- Image fetch + MinIO upload runs as a Flink **async I/O** operator (`AsyncDataStream.unorderedWaitWithRetry`). The HTTP fetch is non-blocking; the blocking MinIO SDK calls run on a bounded executor. The operator task thread is never parked on external I/O, so a slow or unresponsive image URL cannot delay checkpoint barriers. Transient failures (HTTP 5xx, timeouts, I/O errors) are retried by the framework with exponential backoff up to a bounded attempt count (`MINIO_ASYNC_MAX_ATTEMPTS`, e.g. 3); on exhaustion they route to the DLQ. Permanent failures (4xx, redirect/SSRF guard, non-image or absent Content-Type, size cap) route to the DLQ without retry.
+- For `imageUrl` events the bytes are **cloned** into MinIO (fetched, then uploaded under our own `images/<date>/<id>` key) and the original URL is dropped — Postgres stores only `image_object_key`, never the source URL. Cloning rather than referencing the source URL is deliberate: it makes pipeline output **durable and self-contained** (a source URL can rot, move, or rate-limit later), gives downstream a **single uniform representation** (both the file-upload and URL sub-paths converge on `image_object_key`, so consumers never branch on URL-vs-object), and yields a **stable byte size** for analytics (a remote URL's content could change underneath us).
+- The image-URL SSRF control is enforced both at ingestion (backend host allowlist) and at fetch: the Flink HTTP client uses `followRedirects(NEVER)`, so an allowlisted host cannot redirect the socket to an internal endpoint.
+
+### Dead-letter routing
+
+- Unparsable events, events with an unexpected eventType (not DATA/IMAGE), permanent image enrichment failures, and permanent JDBC write failures are all routed to the `events-dlq` Kafka topic rather than crashing the job or triggering infinite restarts.
+
+- The routing paths (parse, image enrichment, image and data Postgres writes, per-type counts over a window e.g. 5-minute, image-size buckets over a window e.g. 10-minute) are unioned into a single Kafka producer for `events-dlq`. Every `DlqRecord` carries a `stage` field (`DlqStage`: PARSE, IMAGE_ENRICH, IMAGE_POSTGRES, DATA_POSTGRES, EVENT_TYPE_COUNT_POSTGRES, IMAGE_SIZE_BUCKET_COUNT_POSTGRES) identifying its origin, so a consumer can attribute a dead-letter record to its stage without a per-source sink. One sink couples dead-letter backpressure across the branches; dead-letter volume is low by nature (only failures), so this is acceptable.
+
+- This covers **capture**, not operations: records land in `events-dlq` at-least-once and are metered per stage, but consuming, replaying, and alerting on the topic are out of scope — see [DLQ operations](#dlq-operations).
+
+### Observability
+
+Flink and Kafka health is exported as Prometheus metrics (the `metrics-prometheus` reporter on the JobManager and TaskManager), scraped by Prometheus and rendered by Grafana.
+
+What is observed, by purpose:
+
+- **Health (paging-grade):** consumer lag (falling behind ingest), job restarts, checkpoint duration and failures, per-task backpressure, and dead-letter volume per `DlqStage`.
+- **Throughput & latency (not paging):** DATA-vs-IMAGE record rates into the Postgres write, and MinIO upload throughput and latency.
+
+The dashboard and its panels are provisioned from [`pipeline-health.json`](../../infra/grafana/provisioning/dashboards/eventtype/pipeline-health.json); the custom counters it reads (`dlq_records`, `image_retryable_failures`, `minio_uploads`/`minio_upload_nanos`) are registered in the Flink job. Those two are the source of truth for the exact metric set and panel layout.
+
+**Alerting:** Grafana-managed rules in [`infra/grafana/provisioning/alerting/`](../../infra/grafana/provisioning/alerting/) email on three Flink-health basics — a scrape target down, no job in RUNNING state, and restart-looping — via the SMTP relay in `.env`. Checkpoint-failure, lag/backpressure, and DLQ alerting are out of scope (dashboard-only). [`scripts/alert-test.sh`](../../scripts/alert-test.sh) drives a real outage to verify the target-down rule fires.
+
 ## Out of scope
 
 ### DLQ operations
@@ -156,20 +127,22 @@ The DLQ is **write-only here**. The capture path is complete (at-least-once sink
 - No replay tooling re-injects dead-lettered records once a payload or downstream fix lands.
 - No alert fires on a non-zero `dlq_records` rate — DLQ alerting is out of scope, so the dead-letter signal is dashboard-only even though Flink-health rules do page (see [Observability](#observability)).
 
-### Single-node deployment
+### Multi-node / HA deployment
+
+The stack runs single-node to fit the resource constraints of a local/demo deployment; horizontal replication and cluster-level failover are not built:
 
 - Kafka: single broker, replication factor 1 — broker loss means data loss.
-- Flink: single JobManager (no HA), single TaskManager — no automatic failover at the cluster level.
+- Flink: single JobManager (no HA), single TaskManager — no cluster-level failover.
 - Postgres and MinIO: no replication or standby.
 
-## Flink building blocks
+## Building blocks
 
 A pointer map — open the source for detail. The **job** (checkpoints, windows, sources, sinks,
 async I/O) is all in `StreamingJob`; the **cluster** (slots, parallelism, services) is in Docker Compose.
 
 Tasks aren't declared anywhere — Flink's JobManager derives them at submit time:
-**operators** (`StreamingJob`) **× parallelism** (`-p 8` in compose) **→ subtasks → scheduled into slots**
-(8 on the TaskManager). See the live layout in the Flink UI (port 8081).
+**operators** (`StreamingJob`) **× parallelism** (e.g. `-p 8`, set in compose) **→ subtasks → scheduled into slots**
+(e.g. 8 on the TaskManager). See the live layout in the Flink UI (e.g. port 8081).
 
 Operator state (the in-flight window counts) uses Flink's default in-memory store — fine at this
 volume, so no RocksDB or `config.yaml` tuning is in the repo.
@@ -177,7 +150,34 @@ volume, so no RocksDB or `config.yaml` tuning is in the repo.
 | Building block | Source |
 | --- | --- |
 | Job, checkpoints, restart, Kafka source, watermarks, windows, async I/O, DLQ sink | [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java) |
-| MinIO async enrichment operator | [`MinioAsyncImageFunction.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/functions/MinioAsyncImageFunction.java) |
 | Postgres sinks (bounded JDBC) | [`functions/`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/functions/) + [`sinks/`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/sinks/) |
+| MinIO async enrichment operator | [`MinioAsyncImageFunction.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/functions/MinioAsyncImageFunction.java) |
 | Fat JAR build / image | [`flink/pom.xml`](../../flink/pom.xml), [`flink/Dockerfile`](../../flink/Dockerfile) |
 | JobManager / TaskManager / slots / parallelism / job submission | [`scripts/docker-compose.yml`](../../scripts/docker-compose.yml) (`flink-*` services) |
+
+## Appendix: Failure handling by stage
+
+Per-stage catalog of handled failures and the job's response — the case-level backing for the reliability behaviors above. The Class column drives the response: **Permanent** routes to the DLQ without retry; **Transient** is retried with bounded backoff before the DLQ (the mechanism — framework async retry, or in-operator retry then checkpoint replay — is given per row); **Misconfig** is caught by pre-flight at startup, before any event is processed.
+
+### Parse stage (`ParseEventFunction`)
+
+| #   | Failure | Class | Response |
+| --- | --- | --- | --- |
+| 1 | Bad JSON / missing required field / bad timestamp | Permanent | → DLQ (`PARSE_ERROR_TAG`) |
+| 2 | eventType not DATA/IMAGE (bad value or missing field) | Unexpected | Cannot originate from the backend (validated enum, private Kafka); folded to the `UNEXPECTED` sentinel, logged, → DLQ (`PARSE_ERROR_TAG`) |
+
+### Image enrichment stage (`MinioAsyncImageFunction` + `EnrichSplitFunction`)
+
+| #   | Failure | Class | Response |
+| --- | --- | --- | --- |
+| 3 | Bad/blank URL / disallowed scheme / 3xx (redirect/SSRF guard) / 4xx / non-image or absent Content-Type / over size cap (e.g. > 10 MB) | Permanent | `EnrichResult.permanentFailure` → `EnrichSplitFunction` → DLQ; no retry |
+| 4 | 5xx / connect or read timeout / I/O error | Transient | `EnrichResult.retryableFailure`; framework async retry (exponential backoff, bounded attempts) → DLQ if exhausted |
+| 5 | MinIO auth / missing bucket (startup); disk full (runtime) | Misconfig | Auth/bucket → pre-flight fails the job at startup. Disk full (not pre-checkable) → retryable → DLQ on exhaustion |
+
+### Postgres write stage (`AbstractPostgresWriteFunction` / `JdbcWriterBase`)
+
+| #   | Failure | Class | Response |
+| --- | --- | --- | --- |
+| 6 | Constraint violation / invalid JSONB | Permanent | Batch fails → row-by-row isolation: good rows commit, the bad row → DLQ (held in list state if hit during a checkpoint flush); no replay loop |
+| 7 | Connection timeout / refused / deadlock | Transient | Bounded in-operator retry (e.g. 2 attempts, backoff, reconnect) under socket/query-timeout caps; escalates to checkpoint replay only if exhausted |
+| 8 | Auth failure / schema mismatch (missing column) | Misconfig | Non-transient SQLState → `PermanentJdbcException` → DLQ |
