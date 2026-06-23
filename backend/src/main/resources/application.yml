@@ -36,6 +36,9 @@ app:
   kafka:
     topic: ${KAFKA_TOPIC:events}
     send-timeout-seconds: ${KAFKA_SEND_TIMEOUT_SECONDS:10}
+  userkeys:
+    kafka:
+      topic: ${KAFKA_USERKEYS_TOPIC:user-keys}
   payload:
     encryption:
       # Base64 AES key; when set, DATA payloads are AES-GCM encrypted before publishing. Empty disables.

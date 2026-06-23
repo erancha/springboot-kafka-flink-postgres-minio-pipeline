@@ -2,7 +2,7 @@
   "annotations": { "list": [] },
   "editable": false,
   "graphTooltip": 1,
-  "title": "Pipeline Health",
+  "title": "eventtype Pipeline Health",
   "uid": "pipeline-health",
   "tags": ["pipeline", "flink", "operability"],
   "timezone": "browser",

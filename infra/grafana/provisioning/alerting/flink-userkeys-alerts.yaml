@@ -1,0 +1,74 @@
+apiVersion: 1
+
+# userKeys consumer-progress alert: fires when the userKeys job is RUNNING but its Kafka source has
+# stopped advancing. Scoped to the userKeys consumer group; consumer-progress metrics come from
+# kafka-exporter (job="kafka").
+groups:
+  # A distinct group title from the shared liveness rules: Grafana keys a provisioned rule group by
+  # (folder, title), so reusing one title across two files makes the second fail to provision.
+  - orgId: 1
+    name: flink-health-userkeys
+    folder: Flink Health
+    interval: 1m
+    rules:
+      # Detects a backlog that is not shrinking (events waiting while the committed offset stays
+      # frozen), not merely a large one, so heavy load tests where the backlog spikes but keeps
+      # draining do not trip it — a stall the Flink-process rules cannot see. noDataState is OK and
+      # both queries coalesce to 0 (`or vector(0)`), so before the group has consumed (every cold
+      # start, or while the job is down) the rule reads 0 and stays quiet instead of a false "stalled".
+      - uid: kafka-consumer-stalled-userkeys
+        title: Kafka consumer stalled (userKeys)
+        condition: D
+        for: 2m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: critical
+          host_machine: $MACHINE_NAME
+        annotations:
+          summary: '{{ $labels.host_machine }} — flink-userkeys-processor has a Kafka backlog that is not draining'
+        data:
+          # Backlog: events waiting to be processed, summed across the group's partitions.
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-pipeline
+            model:
+              refId: A
+              expr: sum(kafka_consumergroup_lag{job="kafka", consumergroup="flink-userkeys-processor"}) or vector(0)
+              instant: true
+              range: false
+          # Offsets the consumer committed in the last 10 minutes; 0 means it is not advancing.
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-pipeline
+            model:
+              refId: B
+              expr: sum(increase(kafka_consumergroup_current_offset{job="kafka", consumergroup="flink-userkeys-processor"}[10m])) or vector(0)
+              instant: true
+              range: false
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              refId: C
+              type: math
+              expression: $A > 0 && $B == 0
+          - refId: D
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              refId: D
+              type: threshold
+              expression: C
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]

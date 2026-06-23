@@ -7,6 +7,10 @@ x-postgres-connection: &postgres-connection
   <<: *postgres-credentials
   POSTGRES_URL: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
 
+x-postgres-userkeys-connection: &postgres-userkeys-connection
+  <<: *postgres-credentials
+  POSTGRES_USERKEYS_URL: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/userkeys
+
 # JobManager, TaskManager, and the job submitter all run one locally-built image: stock
 # apache/flink:2.2-java21 plus the streaming-job jar, with the JRE-absent jdk.compiler exports
 # stripped from the default JVM opts (see flink/Dockerfile). Shared so the strip and the runtime
@@ -90,11 +94,14 @@ services:
       kafka:
         condition: service_healthy
 
-  # Kafka bootstrap job to create the events and DLQ topics before producers/consumers begin exchanging events.
-  # Retention is set via --alter (not only --create --config) so it is enforced on every startup, including
-  # when the topic already exists on the persistent kafka_data volume. events: 4 hours; DLQ: 7 days.
-  # The trailing --describe (group coordinator-warmup) pre-creates __consumer_offsets and loads its
-  # coordinator, so Flink's first offset commit doesn't hit CoordinatorNotAvailable.
+  # Kafka bootstrap job to create both pipelines' event and DLQ topics before producers/consumers begin
+  # exchanging events. Both pipelines' topics are created unconditionally regardless of which pipeline
+  # is active: topic creation is one-time and cheap, so gating it would add ordering fragility for no
+  # gain. Retention is set via --alter (not only --create --config) so it is enforced on every startup,
+  # including when the topic already exists on the persistent kafka_data volume. Event topics: 4 hours;
+  # DLQ topics: 7 days. The trailing --describe (group coordinator-warmup) pre-creates
+  # __consumer_offsets and loads its coordinator, so Flink's first offset commit doesn't hit
+  # CoordinatorNotAvailable.
   kafka-init:
     image: apache/kafka:3.7.1
     depends_on:
@@ -104,6 +111,9 @@ services:
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_TOPIC} --partitions ${PIPELINE_PARALLELISM} --replication-factor 1 &&
       /opt/kafka/bin/kafka-configs.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --alter --entity-type topics --entity-name ${KAFKA_TOPIC} --add-config retention.ms=14400000 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_USERKEYS_TOPIC} --partitions ${PIPELINE_PARALLELISM} --replication-factor 1 &&
+      /opt/kafka/bin/kafka-configs.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --alter --entity-type topics --entity-name ${KAFKA_USERKEYS_TOPIC} --add-config retention.ms=14400000 &&
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --create --if-not-exists --topic ${KAFKA_USERKEYS_DLQ_TOPIC} --partitions 1 --replication-factor 1 --config retention.ms=604800000 &&
       (/opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server ${KAFKA_HOST}:${KAFKA_PORT} --describe --group coordinator-warmup 1>/dev/null 2>&1 || true)"]
 
   # PostgreSQL simulating a data-warehouse-like analytics database for processed DATA/IMAGE events.
@@ -131,6 +141,11 @@ services:
       - shared_buffers=192MB
       - -c
       - wal_compression=on
+      # Enables PostgreSQL XA (PREPARE TRANSACTION), which defaults to 0 (disabled) and which the
+      # userKeys exactly-once JDBC sink requires. Server-wide, so it covers the eventtype warehouse
+      # too (harmless — eventtype uses no XA). Sized in scripts/common.sh from PIPELINE_PARALLELISM.
+      - -c
+      - max_prepared_transactions=${PG_MAX_PREPARED_TRANSACTIONS}
     environment:
       <<: *postgres-credentials
     ports:
@@ -138,6 +153,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/eventtype/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./infra/postgres/userkeys/init.sql:/docker-entrypoint-initdb.d/02-userkeys.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -194,9 +210,11 @@ services:
     depends_on:
       - flink-jobmanager
 
-  # MinIO provides local S3-compatible object storage for IMAGE event outputs.
+  # MinIO provides local S3-compatible object storage for IMAGE event outputs. Specific to the
+  # eventtype pipeline; the userKeys pipeline stores no objects, so this starts only under that profile.
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: ["eventtype"]
     deploy:
       resources:
         limits:
@@ -219,6 +237,7 @@ services:
   # MinIO bootstrap job to create the images bucket required by the assignment pipeline; this is a one-shot init container and is expected to exit successfully.
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: ["eventtype"]
     depends_on:
       minio:
         condition: service_healthy
@@ -240,6 +259,7 @@ services:
       - KAFKA_HOST_LOCAL=${KAFKA_HOST}
       - KAFKA_PORT=${KAFKA_PORT}
       - KAFKA_TOPIC=${KAFKA_TOPIC}
+      - KAFKA_USERKEYS_TOPIC=${KAFKA_USERKEYS_TOPIC}
       - KAFKA_SEND_TIMEOUT_SECONDS
       - MINIO_HOST_LOCAL=${MINIO_HOST}
       - MINIO_PORT=${MINIO_PORT}
@@ -285,10 +305,6 @@ services:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
 
   # Flink TaskManager providing execution slots/workers for the streaming job.
   flink-taskmanager:
@@ -320,9 +336,12 @@ services:
     depends_on:
       - flink-jobmanager
 
-  # Flink job submitter for the Kafka->(MinIO/Postgres) pipeline; unlike minio-init it is not expected to exit immediately, and an early exit means job submission/startup failed.
-  flink-job:
+  # Submitter for the eventtype Kafka->(MinIO/Postgres) pipeline. Started only under the eventtype
+  # profile (one pipeline runs at a time). Unlike minio-init it is not expected to exit immediately,
+  # and an early exit means job submission/startup failed.
+  flink-job-eventtype:
     <<: *flink-image
+    profiles: ["eventtype"]
     deploy:
       resources:
         limits:
@@ -353,6 +372,38 @@ services:
     # JobManager whose TaskManager has not yet registered its slots races the scheduler into a
     # startup restart.
     command: ["/bin/bash", "-lc", "until s=$$(curl -fsS http://flink-jobmanager:8081/overview 2>/dev/null | grep -oE 'slots-total[^0-9]*[0-9]+' | tr -cd '0-9'); [ $${s:-0} -ge ${PIPELINE_PARALLELISM} ]; do echo 'waiting for task slots to register...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.eventtype.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
+
+  # Submitter for the userKeys Kafka->Postgres pipeline. Started only under the userKeys profile, and
+  # shares the same fat jar and cluster as the eventtype submitter (a different main class selects this
+  # job). All job config is read here in main() at submission and captured into the job graph — notably
+  # the XA datasource URL and bounded timeouts the exactly-once sink builds — so the TaskManager needs
+  # none of it. An early exit means job submission/startup failed.
+  flink-job-userkeys:
+    <<: *flink-image
+    profiles: ["userkeys"]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    environment:
+      <<: *postgres-userkeys-connection
+      ROOT_LOG_LEVEL: WARN
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_HOST}:${KAFKA_PORT}
+      KAFKA_USERKEYS_TOPIC: ${KAFKA_USERKEYS_TOPIC}
+      KAFKA_USERKEYS_DLQ_TOPIC: ${KAFKA_USERKEYS_DLQ_TOPIC}
+      USERKEYS_WINDOW_SECONDS: ${USERKEYS_WINDOW_SECONDS}
+      JDBC_SOCKET_TIMEOUT_SECS: ${JDBC_SOCKET_TIMEOUT_SECS:-20}
+      JDBC_CONNECT_TIMEOUT_SECS: ${JDBC_CONNECT_TIMEOUT_SECS:-5}
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    command: ["/bin/bash", "-lc", "until s=$$(curl -fsS http://flink-jobmanager:8081/overview 2>/dev/null | grep -oE 'slots-total[^0-9]*[0-9]+' | tr -cd '0-9'); [ $${s:-0} -ge ${PIPELINE_PARALLELISM} ]; do echo 'waiting for task slots to register...'; sleep 2; done; /opt/flink/bin/flink run -m flink-jobmanager:8081 -d -p ${PIPELINE_PARALLELISM} -c com.webcharm.pipeline.userkeys.StreamingJob /opt/job/app.jar && tail -f /dev/null"]
 
   # React UI (served via Nginx) used to submit IMAGE/DATA events to the backend API.
   ui:

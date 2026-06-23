@@ -1,9 +1,15 @@
 apiVersion: 1
 
 # Root notification policy: every firing alert routes to the email-ops contact point.
-# Grouping by alert name collapses the two per-instance target-down alerts into one email.
+# Grouping by alertname collapses a rule's multiple firing instances (e.g. one per scrape target)
+# into a single email.
+#
+# group_wait holds a new group's first notification long enough to ride out a cold start: until the
+# stack is scraped and the job has registered, liveness rules transiently see no data and would
+# otherwise page on every startup. Genuine outages still notify once the window passes.
 policies:
   - orgId: 1
     receiver: email-ops
     group_by:
       - alertname
+    group_wait: 2m

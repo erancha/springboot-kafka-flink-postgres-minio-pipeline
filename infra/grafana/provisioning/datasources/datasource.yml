@@ -17,6 +17,22 @@ datasources:
     secureJsonData:
       password: postgres
 
+  - name: Postgres userKeys
+    type: postgres
+    uid: postgres-userkeys
+    access: proxy
+    url: postgres:5432
+    user: postgres
+    database: userkeys
+    isDefault: false
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: postgres
+
   - name: Prometheus
     type: prometheus
     uid: prometheus-pipeline

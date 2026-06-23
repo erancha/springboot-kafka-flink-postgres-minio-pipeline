@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Start the stack, or rebuild/recreate only the named services.
-# Usage: start.sh [--fresh] [--restart] [--rebuild] [--profile <name>] [service...]
+# Usage: start.sh [--fresh] [--restart] [--rebuild] [--pipeline <name>] [--profile <name>] [service...]
 #   --fresh            Full stack: stop, wipe volumes (DESTROYS Postgres/Kafka/MinIO data) and prune
 #                      this project's dangling images, then start. Does NOT rebuild images — pair
 #                      with --rebuild (e.g. 'start.sh --fresh --rebuild'). Not combinable with
 #                      --restart or a service list.
 #   --restart          Full stack: stop first (keeps volumes). With services: --force-recreate them.
 #   --rebuild          Rebuild Docker images before starting
+#   --pipeline NAME    Which pipeline to run: eventtype (default) or userkeys. Selects the Compose
+#                      profile, so shared infra plus only that pipeline's job (and MinIO for
+#                      eventtype) start. Run one pipeline at a time. Switching pipelines needs a full
+#                      restart so the prior job is cleared: 'start.sh --restart --pipeline userkeys'.
 #   --profile testing  Apply docker-compose.testing.yml (enables www.gstatic.com image URL fetching)
 #   service...         Limit the operation to named services, e.g. 'start.sh --rebuild backend'
 #
@@ -19,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
@@ -28,12 +32,23 @@ helper() { "$SCRIPT_DIR/docker-helper.sh" "$@"; }
 FRESH=false
 RESTART=false
 REBUILD=false
+# Which pipeline's Compose profile to activate. Shared infra carries no profile and always starts;
+# the eventtype/userkeys submitters (and MinIO, eventtype-only) start only under their profile.
+PIPELINE=eventtype
 SERVICES=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --fresh) FRESH=true ;;
     --restart) RESTART=true ;;
     --rebuild) REBUILD=true ;;
+    --pipeline)
+      PIPELINE="${2:-}"
+      shift
+      case "$PIPELINE" in
+        eventtype|userkeys) ;;
+        *) echo "Unknown pipeline '$PIPELINE' (expected eventtype|userkeys)" >&2; exit 1 ;;
+      esac
+      ;;
     --profile)
       PROFILE="${2:-}"
       shift
@@ -50,6 +65,9 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+# Selects which services Compose starts; honored by docker compose in the helper's compose() wrapper.
+export COMPOSE_PROFILES="$PIPELINE"
+
 if $FRESH; then
   if $RESTART; then
     echo "--fresh and --restart both stop the stack but differ on volumes; pick one." >&2
@@ -62,7 +80,7 @@ if $FRESH; then
 fi
 
 # Service-scoped: recreate/build just those, no whole-stack stop. docker-helper.sh --up handles the
-# flink-job cluster recycle when flink-job is among them.
+# cluster recycle when a flink-job-* submitter is among them.
 if [[ ${#SERVICES[@]} -gt 0 ]]; then
   up=(--up)
   if $REBUILD; then up+=(--build); fi

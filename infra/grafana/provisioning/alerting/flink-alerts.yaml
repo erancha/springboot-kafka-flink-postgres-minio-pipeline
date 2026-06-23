@@ -11,15 +11,17 @@ groups:
     folder: Flink Health
     interval: 1m
     rules:
-      # Fires when Prometheus cannot scrape a Flink process — the JobManager or a TaskManager is
-      # down or unreachable. There is one of each, so losing either halts the whole pipeline. If
-      # Prometheus itself is unreachable the query returns no data, which also fires.
+      # Fires when a Flink process (the JobManager or a TaskManager) is down — losing either halts
+      # the whole pipeline. Prometheus keeps the up series at 0 for a configured-but-unreachable
+      # target, so a real outage trips the threshold after 'for'. noDataState and execErrState are both
+      # OK so neither a cold start (no series yet) nor a transient evaluation error (Grafana's SQLite is
+      # briefly locked during the provisioning burst at boot) pages on startup.
       - uid: flink-target-down
         title: Flink target down
         condition: C
         for: 5m
-        noDataState: Alerting
-        execErrState: Error
+        noDataState: OK
+        execErrState: OK
         labels:
           severity: critical
           host_machine: $MACHINE_NAME
@@ -50,15 +52,16 @@ groups:
                     type: lt
                     params: [1]
 
-      # Fires when the JobManager is up but the streaming job is not RUNNING — it failed or was
-      # cancelled. A dead JobManager is already caught by "Flink target down". If the JobManager
-      # is gone the metric disappears, returning no data, which also fires.
+      # Fires when the JobManager is up but no job is RUNNING (numRunningJobs reads 0) — it failed or
+      # was cancelled. noDataState is OK so a cold start, where the metric is absent until the job
+      # registers, stays quiet rather than paging; a gone JobManager makes this metric disappear but
+      # is already caught by "Flink target down".
       - uid: flink-job-not-running
         title: Flink job not running
         condition: C
         for: 5m
-        noDataState: Alerting
-        execErrState: Error
+        noDataState: OK
+        execErrState: OK
         labels:
           severity: critical
           host_machine: $MACHINE_NAME
@@ -97,7 +100,7 @@ groups:
         condition: C
         for: 0m
         noDataState: OK
-        execErrState: Error
+        execErrState: OK
         labels:
           severity: warning
           host_machine: $MACHINE_NAME
@@ -140,7 +143,7 @@ groups:
         condition: D
         for: 2m
         noDataState: OK
-        execErrState: Error
+        execErrState: OK
         labels:
           severity: critical
           host_machine: $MACHINE_NAME

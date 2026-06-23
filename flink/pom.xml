@@ -12,6 +12,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <flink.version>2.2.1</flink.version>
     <flink.kafka.connector.version>4.0.1-2.0</flink.kafka.connector.version>
+    <flink.jdbc.connector.version>4.0.0-2.0</flink.jdbc.connector.version>
     <jackson.version>2.15.3</jackson.version>
     <minio.version>8.5.12</minio.version>
     <postgres.version>42.7.4</postgres.version>
@@ -39,6 +40,11 @@
       <version>1.0.0</version>
     </dependency>
     <dependency>
+      <groupId>com.webcharm</groupId>
+      <artifactId>contract-userkeys</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.flink</groupId>
       <artifactId>flink-streaming-java</artifactId>
       <version>${flink.version}</version>
@@ -63,6 +69,17 @@
       <groupId>org.apache.flink</groupId>
       <artifactId>flink-connector-base</artifactId>
       <version>${flink.version}</version>
+    </dependency>
+
+    <!-- Flink's Postgres JDBC connector: it supplies the XA two-phase-commit sink the userKeys job
+         uses for exactly-once writes, and transitively brings the connector core. Bundled into the
+         fat jar (compile scope) because the Flink runtime image ships no JDBC connector. The XA
+         datasource this sink drives (PgXADataSource) comes from the postgresql JDBC driver, which is
+         staged into /opt/flink/lib by the provided-scope postgresql dependency below. -->
+    <dependency>
+      <groupId>org.apache.flink</groupId>
+      <artifactId>flink-connector-jdbc-postgres</artifactId>
+      <version>${flink.jdbc.connector.version}</version>
     </dependency>
 
     <dependency>

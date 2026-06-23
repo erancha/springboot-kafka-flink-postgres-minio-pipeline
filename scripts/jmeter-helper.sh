@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Load-test a pipeline's POST /api/events ingestion path with Apache JMeter.
-# Drives that pipeline's jmeter/<pipeline>/backend-load.jmx plan (default pipeline: eventtype),
-# flooding the endpoint with unique events and asserting a 2xx per request. Use the pipeline's
-# send-event.sh for single-shot, end-to-end checks; this tool is purely about ingestion throughput.
+# Load-test a pipeline's backend ingestion path with Apache JMeter.
+# Drives that pipeline's jmeter/<pipeline>/backend-load.jmx plan (default pipeline: eventtype), which
+# owns the endpoint it floods; the helper supplies only the backend base host:port. Asserts a 2xx per
+# request. Use the pipeline's send-event.sh for single-shot, end-to-end checks; this tool is purely
+# about ingestion throughput.
 # Usage: jmeter-helper.sh [options]
 #   -t, --threads N      concurrent virtual users   (default 10)
 #   -i, --iterations N   requests per thread         (default 10)
@@ -225,9 +226,10 @@ advise_tune() {
       echo "  • ${svc}: peak mem ${peakmem}% (${usedmib}MiB of ${limmib}MiB) — raise its" \
            "deploy.resources.limits.memory in scripts/docker-compose.yml (OOM-kill risk under this load)."
       mem_advice=true
-    elif [[ "$svc" == "flink-job" ]] && (( peakmem <= over_provisioned_pct )); then
-      # flink-job idles on `tail -f /dev/null` after submitting; its real peak is the submit-time
-      # client JVM at startup, before sampling begins. The sampled idle is not a basis for trimming.
+    elif [[ "$svc" == flink-job-* ]] && (( peakmem <= over_provisioned_pct )); then
+      # The job submitter idles on `tail -f /dev/null` after submitting; its real peak is the
+      # submit-time client JVM at startup, before sampling begins. The sampled idle is not a basis
+      # for trimming. The active pipeline's submitter is flink-job-eventtype or flink-job-userkeys.
       flink_job_idle=true
     elif (( peakmem <= over_provisioned_pct && reclaim >= min_reclaim_mib )); then
       trim+="${reclaim}	${svc}	${peakmem}	${usedmib}	${limmib}"$'\n'
@@ -244,7 +246,7 @@ advise_tune() {
     done <<<"$(sort -t$'\t' -k1 -rn <<<"$trim")"
   fi
 
-  $flink_job_idle && echo "  • flink-job: idle here, but its cap is not — keep it. The submit-time client" \
+  $flink_job_idle && echo "  • job submitter: idle here, but its cap is not — keep it. The submit-time client" \
     "JVM peaks at startup (before sampling starts), so the sampled idle understates what it needs."
 
   # Source parallelism can't exceed the partition count, so TaskManager CPU headroom — not slot
@@ -280,7 +282,9 @@ advise_tune() {
 
 load_env
 : "${BACKEND_PORT:?BACKEND_PORT not set — is .env present? See .env.example}"
-BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}/api/events"
+# Pass only the backend base; each pipeline's plan appends its own endpoint path (e.g. /api/events,
+# /api/user-keys), so the helper stays agnostic to which route a pipeline ingests on.
+BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
 
 [[ -f "$TEST_PLAN" ]] || { echo "Test plan not found: $TEST_PLAN" >&2; exit 1; }
 

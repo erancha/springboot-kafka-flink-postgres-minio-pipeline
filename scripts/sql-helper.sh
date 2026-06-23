@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Run psql against the warehouse database in the postgres container.
+# Run psql against a database in the postgres container (warehouse by default).
 # Usage: sql-helper.sh [psql-args...]         interactive shell, or e.g. -c "SELECT 1"
 #        sql-helper.sh -f <file> [psql-args]  run a host SQL file (piped via stdin)
+#        sql-helper.sh --db <name> ...        target a database other than warehouse (e.g. userkeys)
 #        sql-helper.sh --host <name|ip> ...   run the container's psql against a remote host
 #                                             instead of the local DB; PGPASSWORD comes from env/.env
 # Examples:
@@ -18,16 +19,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 
-# --host is ours, not psql's: strip it so every other arg forwards to psql untouched.
+# --host and --db are ours, not psql's: strip them so every other arg forwards to psql untouched.
 REMOTE_HOST=""
+DB="warehouse"
 ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host) REMOTE_HOST="${2:?--host needs a name or ip}"; shift 2 ;;
+    --db)   DB="${2:?--db needs a database name}"; shift 2 ;;
     *)      ARGS+=("$1"); shift ;;
   esac
 done
@@ -46,7 +49,7 @@ if [[ -n "$REMOTE_HOST" ]]; then
   ENV_ARGS=(-e "PGPASSWORD=${PGPASSWORD:-${POSTGRES_PASSWORD:-}}")
 fi
 
-PSQL=(psql "${HOST_ARGS[@]+"${HOST_ARGS[@]}"}" -U postgres -d warehouse)
+PSQL=(psql "${HOST_ARGS[@]+"${HOST_ARGS[@]}"}" -U postgres -d "$DB")
 
 # -f names a file on the host, not inside the container, so it is streamed in via
 # stdin rather than psql's own -f (which would resolve the path container-side).

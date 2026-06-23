@@ -9,14 +9,17 @@ groups:
     folder: Backend Health
     interval: 1m
     rules:
-      # Fires when Prometheus cannot scrape the backend actuator endpoint — the process is down or
-      # unreachable. If Prometheus itself is unreachable the query returns no data, which also fires.
+      # Fires when the backend actuator endpoint is down. Prometheus keeps the up series at 0 for a
+      # configured-but-unreachable target, so a real outage trips the threshold after 'for'.
+      # noDataState and execErrState are both OK so neither a cold start (metric absent until the
+      # first scrape) nor a transient evaluation error (Grafana's SQLite is briefly locked during the
+      # provisioning burst at boot) pages on startup.
       - uid: backend-target-down
         title: Backend target down
         condition: C
         for: 5m
-        noDataState: Alerting
-        execErrState: Error
+        noDataState: OK
+        execErrState: OK
         labels:
           severity: critical
           host_machine: $MACHINE_NAME
@@ -55,7 +58,7 @@ groups:
         condition: C
         for: 2m
         noDataState: OK
-        execErrState: Error
+        execErrState: OK
         labels:
           severity: warning
           host_machine: $MACHINE_NAME

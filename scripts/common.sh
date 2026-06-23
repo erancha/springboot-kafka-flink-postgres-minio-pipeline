@@ -12,7 +12,28 @@ compose() {
   [[ -n "${COMPOSE_OVERRIDE:-}" ]] && files+=(-f "$COMPOSE_OVERRIDE")
   # Names the host in Flink alerts; bash's $HOSTNAME is not exported to compose.
   export MACHINE_NAME="${MACHINE_NAME:-$(hostname)}"
+  export PG_MAX_PREPARED_TRANSACTIONS="$(pg_max_prepared_transactions)"
   (cd "$ROOT_DIR" && docker compose --project-directory "$ROOT_DIR" "${files[@]}" "$@")
+}
+
+# Sizes PostgreSQL's max_prepared_transactions for the userKeys exactly-once XA sink: max(16,
+# PIPELINE_PARALLELISM x 4). The peak in-flight prepared transactions is sink parallelism x
+# (maxConcurrentCheckpoints + 1) = PIPELINE_PARALLELISM x 2; the x4 leaves a 2x margin. An explicit
+# PG_MAX_PREPARED_TRANSACTIONS in the environment wins. Compose substitutes its own .env, so the
+# parallelism is read straight from .env here rather than relying on it being in the shell.
+pg_max_prepared_transactions() {
+  if [[ -n "${PG_MAX_PREPARED_TRANSACTIONS:-}" ]]; then
+    printf '%s' "$PG_MAX_PREPARED_TRANSACTIONS"
+    return
+  fi
+  local parallelism="${PIPELINE_PARALLELISM:-}"
+  if [[ -z "$parallelism" && -f "$ROOT_DIR/.env" ]]; then
+    parallelism="$(grep -E '^PIPELINE_PARALLELISM=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2 | tr -dc '0-9')"
+  fi
+  parallelism="${parallelism:-8}"
+  local derived=$(( parallelism * 4 ))
+  (( derived < 16 )) && derived=16
+  printf '%s' "$derived"
 }
 
 # The frontend build context excludes ../backend, so the frontend image cannot reach the schema at

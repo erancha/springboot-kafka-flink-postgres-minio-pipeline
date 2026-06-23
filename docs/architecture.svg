@@ -75,15 +75,31 @@
   <text x="103" y="387" class="cfg" text-anchor="middle" style="font-size: 8.5px;">slots · compose:numTaskSlots</text>
 
   <rect x="266" y="215" width="452" height="190" class="stream-job" rx="5"/>
-  <text x="492" y="236" class="region-label" text-anchor="middle" style="font-size: 12px;">StreamingJob</text>
-  <text x="281" y="259" class="step">① consume → parse JSON → assign event-time watermarks</text>
-  <text x="281" y="280" class="step">② DATA → write to Postgres   <tspan class="retry">[sync JDBC · ↻ on transient]</tspan></text>
-  <text x="281" y="301" class="step">③ IMAGE → always to MinIO (URL: fetch + clone) → write key to Postgres</text>
-  <text x="299" y="314" class="retry">[async I/O · ↻ on transient]</text>
-  <text x="281" y="335" class="step">④ all events → key by type → tumbling window → per-type counts</text>
-  <text x="281" y="356" class="step">⑤ image sizes → bucket → tumbling window → size histogram</text>
-  <text x="281" y="377" class="step">⑥ any-stage failure → dead-letter to Kafka</text>
-  <text x="299" y="390" class="retry" style="fill: #c0392b;">[events-dlq · at-least-once]</text>
+  <text x="492" y="233" class="region-label" text-anchor="middle" style="font-size: 12px;">StreamingJob <tspan style="font-size: 8.5px; font-weight: normal; fill: #6a1b9a;">· one pipeline at a time; main class selects</tspan></text>
+  <!-- divider: eventtype (left) | userKeys (right) -->
+  <line x1="492" y1="243" x2="492" y2="400" stroke="#9b59b6" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="378" y="255" text-anchor="middle" style="font-family: Arial, sans-serif; font-size: 10px; font-weight: bold; fill: #7d3c98;">eventtype</text>
+  <text x="606" y="255" text-anchor="middle" style="font-family: Arial, sans-serif; font-size: 10px; font-weight: bold; fill: #7d3c98;">userKeys</text>
+
+  <!-- eventtype bullets (left half) -->
+  <text x="272" y="273" class="step" style="font-size: 9.5px;">① consume → parse → watermarks</text>
+  <text x="272" y="290" class="step" style="font-size: 9.5px;">② DATA → Postgres <tspan class="retry" style="font-size: 8.5px;">[JDBC ↻]</tspan></text>
+  <text x="272" y="307" class="step" style="font-size: 9.5px;">③ IMAGE → MinIO (URL: fetch+clone)</text>
+  <text x="288" y="320" class="retry" style="font-size: 8.5px;">→ key → Postgres [async ↻]</text>
+  <text x="272" y="337" class="step" style="font-size: 9.5px;">④ key by type → window → counts</text>
+  <text x="272" y="354" class="step" style="font-size: 9.5px;">⑤ image sizes → window → histogram</text>
+  <text x="272" y="371" class="step" style="font-size: 9.5px;">⑥ any failure → dead-letter</text>
+  <text x="288" y="384" class="retry" style="font-size: 8.5px; fill: #c0392b;">[events-dlq · at-least-once]</text>
+
+  <!-- userKeys bullets (right half): aggregates only — no images, no raw rows -->
+  <text x="500" y="273" class="step" style="font-size: 9.5px;">① consume → parse → watermarks</text>
+  <text x="500" y="290" class="step" style="font-size: 9.5px;">② sum value by (userId, key)</text>
+  <text x="516" y="303" class="step" style="font-size: 8.5px;">over event-time tumbling window</text>
+  <text x="500" y="320" class="step" style="font-size: 9.5px;">③ aggregates → Postgres</text>
+  <text x="516" y="333" class="retry" style="font-size: 8.5px; fill: #6a1b9a;">[XA · exactly-once]</text>
+  <text x="500" y="350" class="step" style="font-size: 9.5px;">④ any failure → dead-letter</text>
+  <text x="516" y="363" class="retry" style="font-size: 8.5px; fill: #c0392b;">[user-keys-dlq]</text>
+  <text x="500" y="383" class="cfg" style="font-size: 8.5px;">no images · no raw rows</text>
 
   <!-- Prometheus (observability, right of Flink) -->
   <rect x="778" y="225" width="166" height="90" class="observ" rx="5"/>
@@ -133,10 +149,10 @@
   <text x="30" y="154" class="alabel">file upload (sync)</text>
   <!-- StreamingJob → MinIO : async I/O + retry -->
   <path d="M 300 405 L 165 463" class="async" marker-end="url(#ah)"/>
-  <text x="188" y="430" class="alabel">image upload</text>
+  <text x="225" y="445" class="alabel">image upload</text>
   <!-- StreamingJob → Postgres : sync JDBC + retry -->
   <path d="M 470 405 L 420 463" class="sync" marker-end="url(#ah)"/>
-  <text x="465" y="430" class="alabel">rows + aggregates</text>
+  <text x="445" y="445" class="alabel">rows / aggregates</text>
   <!-- Prometheus → Flink : scrape (observe) -->
   <path d="M 776 267 L 731 267" class="observe" marker-end="url(#ah)"/>
   <text x="861" y="219" class="alabel" text-anchor="middle">scrape metrics</text>
@@ -175,6 +191,6 @@
   <text x="1027" y="342" class="leg-t">backoff (managed by Flink).</text>
   <text x="1027" y="364" class="leg-t">Offsets commit on checkpoint,</text>
   <text x="1027" y="378" class="leg-t">not on Kafka auto-commit.</text>
-  <text x="1027" y="400" class="leg-t">events-dlq gathers failures from</text>
-  <text x="1027" y="414" class="leg-t">every stage (parse, upload, writes).</text>
+  <text x="1027" y="400" class="leg-t">each pipeline's DLQ gathers failures</text>
+  <text x="1027" y="414" class="leg-t">from every stage (parse, enrich, writes).</text>
 </svg>

@@ -10,10 +10,11 @@
 
   <!-- Aggregator for the reactor. It only lists modules and fixes their build order; the child
        modules keep their own coordinates and plugin configuration rather than inheriting from here.
-       Listing 'contract-eventtype' first lets a reactor build (mvn -pl backend -am, -pl flink -am) compile the
-       shared contract before the runtimes that consume it. -->
+       Listing the contract modules first lets a reactor build (mvn -pl backend -am, -pl flink -am) compile
+       each shared contract before the runtimes that consume it. -->
   <modules>
     <module>contract-eventtype</module>
+    <module>contract-userkeys</module>
     <module>backend</module>
     <module>flink</module>
   </modules>

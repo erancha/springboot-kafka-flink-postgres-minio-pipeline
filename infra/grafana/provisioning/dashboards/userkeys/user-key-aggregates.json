@@ -1,0 +1,104 @@
+{
+  "uid": "userkeys-aggregates",
+  "title": "userKeys Aggregates Analytics",
+  "tags": ["webcharm", "assignment", "userkeys"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 99,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "📊 This dashboard reads the Flink **pre-aggregated** `user_key_aggregates` table in the `userkeys` database, which holds one row per closed tumbling window per (user_id, key) — so these queries stay cheap as the pipeline scales. For live (15s) pipeline metrics, use the **userKeys Pipeline Health** dashboard, which queries Prometheus."
+      }
+    },
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Latest window sums per (user, key)",
+      "description": "The most recent window's value_sum for each (user_id, key), newest windows first. One row per distinct (user_id, key) seen in range.",
+      "gridPos": {
+        "h": 18,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres-userkeys"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT DISTINCT ON (user_id, key)\n       window_start,\n       window_end,\n       user_id,\n       key,\n       value_sum::bigint AS value_sum\nFROM user_key_aggregates\nWHERE $__timeFilter(window_start)\nORDER BY user_id, key, window_start DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "value_sum per window by (user, key)",
+      "description": "Time series of value_sum keyed at window_start, one line per (user_id, key). Tracks how each key's per-window summed value evolves over time.",
+      "gridPos": {
+        "h": 18,
+        "w": 12,
+        "x": 12,
+        "y": 3
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres-userkeys"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT window_start AS time,\n       value_sum::bigint AS value,\n       user_id || ' / ' || key AS metric\nFROM user_key_aggregates\nWHERE $__timeFilter(window_start)\nORDER BY window_start;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    }
+  ]
+}

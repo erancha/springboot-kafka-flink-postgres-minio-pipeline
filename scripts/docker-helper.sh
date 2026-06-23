@@ -3,8 +3,8 @@
 # Usage: docker-helper.sh <command> [args]
 #   --up [--build] [--recreate] [service...]
 #       Start the stack, or only the named services. --build rebuilds images first; --recreate
-#       forces container recreation. Rebuilding flink-job also recycles the JobManager/TaskManager
-#       so the prior job submission is cleared before the new one is resubmitted.
+#       forces container recreation. Rebuilding a flink-job-* submitter also recycles the
+#       JobManager/TaskManager so the prior job submission is cleared before the new one is resubmitted.
 #   --build [service...]
 #       Build all stack images, or only the named services.
 #   --stop [--keep-volumes] [--prune[=images|volumes|both]]
@@ -24,7 +24,7 @@
 #
 # Scope to specific services by naming them last (narrows --build and --logs; --stop is whole-stack):
 #   ./scripts/docker-helper.sh --build backend ui      # include: build just these two
-#   ./scripts/docker-helper.sh --logs -e flink-job     # include: follow errors from one service
+#   ./scripts/docker-helper.sh --logs -e flink-job-eventtype  # include: follow errors from one service
 # To skip a service, list the others. Combine with -e/-w to filter by severity too — 
 # e.g. all warnings except Grafana, whose auth logs otherwise dominate -w:
 #   ./scripts/docker-helper.sh --logs -w $(docker compose --project-directory . -f scripts/docker-compose.yml config --services 2>/dev/null | grep -vx grafana)
@@ -53,7 +53,7 @@ compose_project() {
   basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'
 }
 
-# Starts the stack, or only the named services. Rebuilding flink-job recycles the
+# Starts the stack, or only the named services. Rebuilding a flink-job-* submitter recycles the
 # JobManager/TaskManager: the JobManager keeps the prior submission running across a plain recreate,
 # so the cluster pair must be recreated to clear the old job before the rebuilt one is resubmitted.
 do_up() {
@@ -69,7 +69,7 @@ do_up() {
     shift
   done
 
-  if printf '%s\n' "${targets[@]+"${targets[@]}"}" | grep -qx flink-job; then
+  if printf '%s\n' "${targets[@]+"${targets[@]}"}" | grep -qE '^flink-job-'; then
     targets=(flink-jobmanager flink-taskmanager "${targets[@]}")
     recreate=true
   fi
@@ -112,10 +112,14 @@ do_stop() {
     exit 1
   fi
 
+  # Enable every profile for teardown so down removes both pipelines' services regardless of which
+  # profile (if any) is active in the caller's shell. --remove-orphans only deletes containers of
+  # services absent from the compose file, not profile-gated ones, so without COMPOSE_PROFILES='*' a
+  # profiled submitter (e.g. flink-job-userkeys) survives and pins the network, blocking its removal.
   if $keep; then
-    compose down
+    COMPOSE_PROFILES='*' compose down --remove-orphans
   else
-    compose down -v --remove-orphans
+    COMPOSE_PROFILES='*' compose down -v --remove-orphans
   fi
 
   local -a scope=(--filter "label=com.docker.compose.project=$(compose_project)")
