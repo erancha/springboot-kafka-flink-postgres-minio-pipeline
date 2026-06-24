@@ -15,6 +15,13 @@
 -- ORDER BY window_start DESC
 -- LIMIT 10;
 
+\echo '== [user_key_aggregates] Count of aggregated records (one row per closed window per (userId, key)) =='
+-- Total window-result rows written, mirroring the "Cumulative aggregate rows written" dashboard
+-- panel. This counts rows, not events: each row is one (userId, key) tumbling window, so it grows by
+-- the number of active (userId, key) pairs each time a window fires, not by the inbound event rate.
+SELECT COUNT(*) AS aggregated_records
+FROM user_key_aggregates;
+
 \echo '== [user_key_aggregates] Real-time: latest windowed (userId, key) sums (pre-aggregated by Flink) =='
 SELECT window_start, window_end, user_id, key, value_sum
 FROM user_key_aggregates
