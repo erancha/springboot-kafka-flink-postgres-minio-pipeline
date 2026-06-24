@@ -129,8 +129,8 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Aggregate rows / sec into Postgres",
-      "description": "Per-second window-aggregate rows entering the Postgres write operator (user_key_agg_to_postgres). Reporter-native numRecordsIn, no custom code. One row per closed (user_id, key) tumbling window, so this tracks window-firing throughput rather than the inbound event rate.",
+      "title": "Aggregate rows produced / sec",
+      "description": "Per-second rate of window-result rows entering the Postgres write operator (user_key_agg_to_postgres). Reporter-native numRecordsIn, no custom code. One row per closed (user_id, key) tumbling window, so this is window-firing throughput, not the inbound event rate. Physical persistence is batched: the XA sink commits one transaction per checkpoint, so these rows reach Postgres in checkpoint-sized batches rather than continuously.",
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
