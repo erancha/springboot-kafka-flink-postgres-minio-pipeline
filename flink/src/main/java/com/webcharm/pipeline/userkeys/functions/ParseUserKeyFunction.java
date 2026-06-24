@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webcharm.contract.userkeys.event.UserKeyFields;
-import com.webcharm.pipeline.userkeys.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.userkeys.types.DlqStage;
 import com.webcharm.pipeline.userkeys.types.UserKeyEvent;
 import java.time.Instant;
@@ -43,7 +43,7 @@ public class ParseUserKeyFunction extends ProcessFunction<String, UserKeyEvent> 
     try {
       out.collect(parse(value));
     } catch (Exception e) {
-      ctx.output(PARSE_ERROR_TAG, new DlqRecord(DlqStage.PARSE, value, e.getMessage(), Instant.now()));
+      ctx.output(PARSE_ERROR_TAG, new DlqRecord(DlqStage.PARSE.name(), value, e.getMessage(), Instant.now()));
     }
   }
 

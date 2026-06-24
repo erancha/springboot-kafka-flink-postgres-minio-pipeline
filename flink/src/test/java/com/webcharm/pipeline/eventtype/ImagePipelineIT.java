@@ -3,7 +3,7 @@ package com.webcharm.pipeline.eventtype;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.webcharm.pipeline.eventtype.functions.EnrichSplitFunction;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.ProcessedEvent;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -69,6 +69,6 @@ class ImagePipelineIT {
 
     assertEquals(1, dlq.size());
     assertTrue(dlq.get(0).error().contains("neither imageUrl nor imageObjectKey"));
-    assertEquals(com.webcharm.pipeline.eventtype.types.DlqStage.IMAGE_ENRICH, dlq.get(0).stage());
+    assertEquals(com.webcharm.pipeline.eventtype.types.DlqStage.IMAGE_ENRICH.name(), dlq.get(0).stage());
   }
 }

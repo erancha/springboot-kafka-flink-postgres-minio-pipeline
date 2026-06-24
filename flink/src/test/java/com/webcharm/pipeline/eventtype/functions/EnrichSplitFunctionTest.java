@@ -2,7 +2,7 @@ package com.webcharm.pipeline.eventtype.functions;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.EnrichResult;
 import com.webcharm.pipeline.eventtype.types.ImageSizeBucket;
@@ -77,7 +77,7 @@ class EnrichSplitFunctionTest {
   @Test
   void permanentFailure_goesToSideOutput() {
     Harness h = new Harness();
-    h.run(EnrichResult.permanentFailure(new DlqRecord(DlqStage.IMAGE_ENRICH, "raw", "bad", Instant.now())));
+    h.run(EnrichResult.permanentFailure(new DlqRecord(DlqStage.IMAGE_ENRICH.name(), "raw", "bad", Instant.now())));
     assertTrue(h.main.isEmpty());
     assertEquals(1, h.dlq.size());
   }
@@ -85,7 +85,7 @@ class EnrichSplitFunctionTest {
   @Test
   void retryableFailure_goesToSideOutput() {
     Harness h = new Harness();
-    h.run(EnrichResult.retryableFailure(new DlqRecord(DlqStage.IMAGE_ENRICH, "raw", "transient", Instant.now())));
+    h.run(EnrichResult.retryableFailure(new DlqRecord(DlqStage.IMAGE_ENRICH.name(), "raw", "transient", Instant.now())));
     assertTrue(h.main.isEmpty());
     assertEquals(1, h.dlq.size());
   }

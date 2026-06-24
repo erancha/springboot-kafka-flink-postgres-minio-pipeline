@@ -1,7 +1,7 @@
 package com.webcharm.pipeline.eventtype.sinks;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.webcharm.pipeline.eventtype.config.EnvConfig;
+import com.webcharm.pipeline.common.config.EnvConfig;
 import com.webcharm.pipeline.eventtype.types.ProcessedEvent;
 import java.io.IOException;
 import java.sql.Connection;

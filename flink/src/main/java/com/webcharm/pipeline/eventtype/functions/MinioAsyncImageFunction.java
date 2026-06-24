@@ -1,8 +1,8 @@
 package com.webcharm.pipeline.eventtype.functions;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.webcharm.pipeline.eventtype.config.EnvConfig;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.config.EnvConfig;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.EnrichResult;
 import com.webcharm.pipeline.eventtype.types.ProcessedEvent;
@@ -137,7 +137,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     log.warn("Async enrichment timed out for event id={}", value.getId());
     resultFuture.complete(Collections.singleton(
         EnrichResult.permanentFailure(
-            new DlqRecord(DlqStage.IMAGE_ENRICH, toRawString(value), "async enrichment timed out", Instant.now()))));
+            new DlqRecord(DlqStage.IMAGE_ENRICH.name(), toRawString(value), "async enrichment timed out", Instant.now()))));
   }
 
   /**
@@ -157,7 +157,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     String url = value.getImageUrl();
     if (url == null || url.isBlank()) {
       return CompletableFuture.completedFuture(EnrichResult.permanentFailure(
-          new DlqRecord(DlqStage.IMAGE_ENRICH, toRawString(value),
+          new DlqRecord(DlqStage.IMAGE_ENRICH.name(), toRawString(value),
               "IMAGE event has neither imageUrl nor imageObjectKey", Instant.now())));
     }
 
@@ -229,7 +229,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   private EnrichResult classify(ProcessedEvent value, Throwable err) {
     Throwable cause = unwrap(err);
     String msg = cause.getMessage() == null ? cause.toString() : cause.getMessage();
-    DlqRecord record = new DlqRecord(DlqStage.IMAGE_ENRICH, toRawString(value), msg, Instant.now());
+    DlqRecord record = new DlqRecord(DlqStage.IMAGE_ENRICH.name(), toRawString(value), msg, Instant.now());
     if (cause instanceof PermanentImageException) {
       log.warn("Permanent image failure for id={}: {}", value.getId(), msg);
       return EnrichResult.permanentFailure(record);

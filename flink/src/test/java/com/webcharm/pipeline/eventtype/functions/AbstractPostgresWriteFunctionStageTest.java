@@ -3,7 +3,7 @@ package com.webcharm.pipeline.eventtype.functions;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.webcharm.pipeline.eventtype.sinks.JdbcWriter;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,13 +62,13 @@ class AbstractPostgresWriteFunctionStageTest {
   void stampsImagePostgresStage() throws Exception {
     List<DlqRecord> out = new Fn(DlqStage.IMAGE_POSTGRES).run("payload");
     assertEquals(1, out.size());
-    assertEquals(DlqStage.IMAGE_POSTGRES, out.get(0).stage());
+    assertEquals(DlqStage.IMAGE_POSTGRES.name(), out.get(0).stage());
   }
 
   @Test
   void stampsDataPostgresStage() throws Exception {
     List<DlqRecord> out = new Fn(DlqStage.DATA_POSTGRES).run("payload");
     assertEquals(1, out.size());
-    assertEquals(DlqStage.DATA_POSTGRES, out.get(0).stage());
+    assertEquals(DlqStage.DATA_POSTGRES.name(), out.get(0).stage());
   }
 }

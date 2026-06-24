@@ -1,13 +1,12 @@
 package com.webcharm.pipeline.userkeys;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.webcharm.pipeline.userkeys.config.EnvConfig;
-import com.webcharm.pipeline.userkeys.functions.DlqMeterFunction;
+import com.webcharm.pipeline.common.config.EnvConfig;
+import com.webcharm.pipeline.common.dlq.DlqMeterFunction;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecordSerializer;
 import com.webcharm.pipeline.userkeys.functions.ParseUserKeyFunction;
 import com.webcharm.pipeline.userkeys.functions.SumAggregateFunction;
-import com.webcharm.pipeline.userkeys.types.DlqRecord;
+import com.webcharm.pipeline.userkeys.types.DlqStage;
 import com.webcharm.pipeline.userkeys.types.UserKeyAgg;
 import com.webcharm.pipeline.userkeys.types.UserKeyEvent;
 import java.time.Duration;
@@ -15,7 +14,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import javax.sql.XADataSource;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -137,7 +135,7 @@ public class StreamingJob {
         .name("user-key-agg-to-postgres");
 
     parseErrors
-        .map(new DlqMeterFunction())
+        .map(new DlqMeterFunction<>(DlqStage.class))
         .name("dlq-meter")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("dlq-sink");
@@ -226,23 +224,5 @@ public class StreamingJob {
                 .setValueSerializationSchema(new DlqRecordSerializer())
                 .build())
         .build();
-  }
-
-  private static class DlqRecordSerializer implements SerializationSchema<DlqRecord> {
-    private transient ObjectMapper mapper;
-
-    @Override
-    public void open(InitializationContext context) {
-      mapper = new ObjectMapper().registerModule(new JavaTimeModule());
-    }
-
-    @Override
-    public byte[] serialize(DlqRecord record) {
-      try {
-        return mapper.writeValueAsBytes(record);
-      } catch (JsonProcessingException e) {
-        throw new RuntimeException(e);
-      }
-    }
   }
 }

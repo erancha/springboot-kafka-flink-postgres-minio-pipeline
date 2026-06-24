@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.webcharm.pipeline.eventtype.sinks.JdbcWriter;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import java.time.Instant;
 import org.apache.flink.api.common.functions.OpenContext;
@@ -107,7 +107,7 @@ abstract class AbstractPostgresWriteFunction<T> extends ProcessFunction<T, DlqRe
   }
 
   private DlqRecord toDlqRecord(JdbcWriter.FailedRow<T> failure) throws JsonProcessingException {
-    return new DlqRecord(stage, mapper.writeValueAsString(failure.value()), failure.reason(), Instant.now());
+    return new DlqRecord(stage.name(), mapper.writeValueAsString(failure.value()), failure.reason(), Instant.now());
   }
 
   /**

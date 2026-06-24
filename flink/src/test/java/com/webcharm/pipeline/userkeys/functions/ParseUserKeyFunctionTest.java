@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.webcharm.pipeline.userkeys.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.userkeys.types.DlqStage;
 import com.webcharm.pipeline.userkeys.types.UserKeyEvent;
 import java.time.Instant;
@@ -100,7 +100,7 @@ class ParseUserKeyFunctionTest {
 
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
-    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+    assertEquals(DlqStage.PARSE.name(), fn.dlqCapture.get(0).stage());
     assertNotNull(fn.dlqCapture.get(0).failedAt());
   }
 
@@ -144,7 +144,7 @@ class ParseUserKeyFunctionTest {
         """);
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
-    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+    assertEquals(DlqStage.PARSE.name(), fn.dlqCapture.get(0).stage());
   }
 
   /**

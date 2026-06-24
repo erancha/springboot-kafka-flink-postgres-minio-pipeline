@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.eventtype.functions;
 
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.EnrichResult;
 import com.webcharm.pipeline.eventtype.types.ImageSizeBucket;
 import com.webcharm.pipeline.eventtype.types.ProcessedEvent;

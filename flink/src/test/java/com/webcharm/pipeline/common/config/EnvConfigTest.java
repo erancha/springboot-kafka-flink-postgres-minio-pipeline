@@ -1,4 +1,4 @@
-package com.webcharm.pipeline.eventtype.config;
+package com.webcharm.pipeline.common.config;
 
 import static org.junit.jupiter.api.Assertions.*;
 

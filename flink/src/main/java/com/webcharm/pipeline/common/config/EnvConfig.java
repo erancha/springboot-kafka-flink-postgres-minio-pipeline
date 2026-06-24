@@ -1,6 +1,6 @@
-package com.webcharm.pipeline.userkeys.config;
+package com.webcharm.pipeline.common.config;
 
-/** Environment-variable lookup with defaults. */
+/** Environment-variable lookup with defaults, shared by every pipeline's job. */
 public final class EnvConfig {
   private EnvConfig() {}
 

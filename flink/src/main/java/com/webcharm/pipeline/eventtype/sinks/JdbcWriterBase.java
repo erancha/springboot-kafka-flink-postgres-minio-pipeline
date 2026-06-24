@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.eventtype.sinks;
 
-import com.webcharm.pipeline.eventtype.config.EnvConfig;
+import com.webcharm.pipeline.common.config.EnvConfig;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.IOException;

@@ -3,7 +3,7 @@ package com.webcharm.pipeline.eventtype.functions;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.EventType;
 import com.webcharm.pipeline.eventtype.types.ProcessedEvent;
@@ -55,19 +55,19 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
             + "enum and Kafka is private, so this indicates a non-backend producer or schema "
             + "skew. Routing to DLQ.");
         ctx.output(PARSE_ERROR_TAG,
-            new DlqRecord(DlqStage.PARSE, value, "unexpected eventType (not DATA/IMAGE)", Instant.now()));
+            new DlqRecord(DlqStage.PARSE.name(), value, "unexpected eventType (not DATA/IMAGE)", Instant.now()));
         return;
       }
       if (EventType.IMAGE.equals(event.getEventType())
           && event.getImageUrl() == null
           && event.getImageObjectKey() == null) {
         ctx.output(PARSE_ERROR_TAG,
-            new DlqRecord(DlqStage.PARSE, value, "IMAGE event has neither imageUrl nor imageObjectKey", Instant.now()));
+            new DlqRecord(DlqStage.PARSE.name(), value, "IMAGE event has neither imageUrl nor imageObjectKey", Instant.now()));
         return;
       }
       out.collect(event);
     } catch (Exception e) {
-      ctx.output(PARSE_ERROR_TAG, new DlqRecord(DlqStage.PARSE, value, e.getMessage(), Instant.now()));
+      ctx.output(PARSE_ERROR_TAG, new DlqRecord(DlqStage.PARSE.name(), value, e.getMessage(), Instant.now()));
     }
   }
 

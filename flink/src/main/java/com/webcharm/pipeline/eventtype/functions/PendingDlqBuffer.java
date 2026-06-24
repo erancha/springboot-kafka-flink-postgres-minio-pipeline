@@ -2,7 +2,7 @@ package com.webcharm.pipeline.eventtype.functions;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import java.util.ArrayList;
 import java.util.List;
 

@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.userkeys;
 
-import com.webcharm.pipeline.userkeys.config.EnvConfig;
+import com.webcharm.pipeline.common.config.EnvConfig;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;

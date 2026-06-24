@@ -3,7 +3,7 @@ package com.webcharm.pipeline.eventtype.functions;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.webcharm.pipeline.eventtype.sinks.JdbcWriter;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,7 +71,7 @@ class AbstractPostgresWriteFunctionCheckpointTest {
 
     List<DlqRecord> emitted = fn.process("next");
     assertEquals(1, emitted.size());
-    assertEquals(DlqStage.DATA_POSTGRES, emitted.get(0).stage());
+    assertEquals(DlqStage.DATA_POSTGRES.name(), emitted.get(0).stage());
     assertTrue(emitted.get(0).raw().contains("bad"));
 
     assertTrue(fn.process("again").isEmpty(), "stashed record must be drained exactly once");
@@ -87,6 +87,6 @@ class AbstractPostgresWriteFunctionCheckpointTest {
     List<DlqRecord> emitted = fn.process("x");
 
     assertEquals(1, emitted.size());
-    assertEquals(DlqStage.DATA_POSTGRES, emitted.get(0).stage());
+    assertEquals(DlqStage.DATA_POSTGRES.name(), emitted.get(0).stage());
   }
 }

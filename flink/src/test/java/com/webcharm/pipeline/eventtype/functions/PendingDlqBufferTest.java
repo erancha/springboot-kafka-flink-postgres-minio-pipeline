@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import java.time.Instant;
 import java.util.List;
@@ -19,7 +19,7 @@ class PendingDlqBufferTest {
   private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
   private static DlqRecord rec(String raw) {
-    return new DlqRecord(DlqStage.DATA_POSTGRES, raw, "constraint", Instant.parse("2026-05-18T00:00:00Z"));
+    return new DlqRecord(DlqStage.DATA_POSTGRES.name(), raw, "constraint", Instant.parse("2026-05-18T00:00:00Z"));
   }
 
   @Test

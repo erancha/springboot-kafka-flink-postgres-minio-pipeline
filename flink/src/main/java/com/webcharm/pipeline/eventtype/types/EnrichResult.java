@@ -1,5 +1,6 @@
 package com.webcharm.pipeline.eventtype.types;
 
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import java.io.Serializable;
 
 /**

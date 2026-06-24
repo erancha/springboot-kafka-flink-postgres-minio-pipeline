@@ -2,6 +2,7 @@ package com.webcharm.pipeline.eventtype.types;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -16,7 +17,7 @@ class EnrichResultTest {
   }
 
   private static DlqRecord dlq() {
-    return new DlqRecord(DlqStage.IMAGE_ENRICH, "raw", "boom", Instant.now());
+    return new DlqRecord(DlqStage.IMAGE_ENRICH.name(), "raw", "boom", Instant.now());
   }
 
   @Test

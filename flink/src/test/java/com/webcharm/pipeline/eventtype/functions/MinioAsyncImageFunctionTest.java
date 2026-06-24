@@ -153,7 +153,7 @@ class MinioAsyncImageFunctionTest {
     assertFalse(r.isSuccess());
     assertFalse(r.isRetryable());
     assertNotNull(r.failure());
-    assertEquals(DlqStage.IMAGE_ENRICH, r.failure().stage());
+    assertEquals(DlqStage.IMAGE_ENRICH.name(), r.failure().stage());
   }
 
   /**
@@ -241,7 +241,7 @@ class MinioAsyncImageFunctionTest {
 
     assertFalse(r.isSuccess());
     assertFalse(r.isRetryable());
-    assertEquals(DlqStage.IMAGE_ENRICH, r.failure().stage());
+    assertEquals(DlqStage.IMAGE_ENRICH.name(), r.failure().stage());
     verify(minioClient, never()).putObject(any());
   }
 

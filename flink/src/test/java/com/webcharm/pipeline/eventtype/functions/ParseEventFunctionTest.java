@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.eventtype.functions;
 
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.ProcessedEvent;
 import org.apache.flink.api.common.functions.DefaultOpenContext;
@@ -220,7 +220,7 @@ class ParseEventFunctionTest {
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
     assertTrue(fn.dlqCapture.get(0).error().contains("unexpected eventType"));
-    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+    assertEquals(DlqStage.PARSE.name(), fn.dlqCapture.get(0).stage());
   }
 
   /** A missing eventType field is treated as unexpected and routed to the DLQ. */
@@ -256,7 +256,7 @@ class ParseEventFunctionTest {
 
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
-    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+    assertEquals(DlqStage.PARSE.name(), fn.dlqCapture.get(0).stage());
   }
 
   /**
@@ -277,7 +277,7 @@ class ParseEventFunctionTest {
 
     assertEquals(1, fn.dlqCapture.size());
     assertTrue(fn.mainCapture.isEmpty());
-    assertEquals(DlqStage.PARSE, fn.dlqCapture.get(0).stage());
+    assertEquals(DlqStage.PARSE.name(), fn.dlqCapture.get(0).stage());
   }
 
   /**

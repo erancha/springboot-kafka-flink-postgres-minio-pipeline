@@ -1,6 +1,6 @@
 package com.webcharm.pipeline.eventtype;
 
-import com.webcharm.pipeline.eventtype.config.EnvConfig;
+import com.webcharm.pipeline.common.config.EnvConfig;
 import io.minio.BucketExistsArgs;
 import io.minio.MinioClient;
 import java.sql.Connection;

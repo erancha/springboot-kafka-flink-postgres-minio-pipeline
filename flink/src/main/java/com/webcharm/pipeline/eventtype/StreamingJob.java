@@ -1,18 +1,16 @@
 package com.webcharm.pipeline.eventtype;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.webcharm.pipeline.eventtype.config.EnvConfig;
+import com.webcharm.pipeline.common.config.EnvConfig;
+import com.webcharm.pipeline.common.dlq.DlqMeterFunction;
+import com.webcharm.pipeline.common.dlq.DlqRecord;
+import com.webcharm.pipeline.common.dlq.DlqRecordSerializer;
 import com.webcharm.pipeline.eventtype.functions.CountAggregateFunction;
-import com.webcharm.pipeline.eventtype.functions.DlqMeterFunction;
 import com.webcharm.pipeline.eventtype.functions.EnrichSplitFunction;
 import com.webcharm.pipeline.eventtype.functions.MinioAsyncImageFunction;
 import com.webcharm.pipeline.eventtype.functions.ParseEventFunction;
 import com.webcharm.pipeline.eventtype.functions.PostgresCountAggWriteFunction;
 import com.webcharm.pipeline.eventtype.functions.PostgresImageSizeBucketCountAggWriteFunction;
 import com.webcharm.pipeline.eventtype.functions.PostgresWriteFunction;
-import com.webcharm.pipeline.eventtype.types.DlqRecord;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.EnrichResult;
 import com.webcharm.pipeline.eventtype.types.EventType;
@@ -23,7 +21,6 @@ import com.webcharm.pipeline.eventtype.types.ProcessedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
@@ -156,7 +153,7 @@ public class StreamingJob {
     // across branches, but dead-letter volume is low (only failures), so it is an acceptable trade-off.
     parseErrors
         .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors, imageSizeCountErrors)
-        .map(new DlqMeterFunction())
+        .map(new DlqMeterFunction<>(DlqStage.class))
         .name("dlq-meter")
         .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
         .name("dlq-sink");
@@ -273,23 +270,5 @@ public class StreamingJob {
                 .setValueSerializationSchema(new DlqRecordSerializer())
                 .build())
         .build();
-  }
-
-  private static class DlqRecordSerializer implements SerializationSchema<DlqRecord> {
-    private transient ObjectMapper mapper;
-
-    @Override
-    public void open(InitializationContext context) {
-      mapper = new ObjectMapper().registerModule(new JavaTimeModule());
-    }
-
-    @Override
-    public byte[] serialize(DlqRecord record) {
-      try {
-        return mapper.writeValueAsBytes(record);
-      } catch (JsonProcessingException e) {
-        throw new RuntimeException(e);
-      }
-    }
   }
 }
