@@ -6,11 +6,11 @@
 
 ## Summary
 
-The engineering focus of this project is the data path — **frontend → backend → Kafka → Flink → sinks** — and its
+The engineering focus of this project is the data path — [ **frontend →** ] **backend → Kafka → Flink → sinks** — and its
 failure handling: idempotent upserts, bounded timeouts on every external I/O path, DLQ routing,
 exactly-once reasoning, and observability.
 
-The stack runs two independent pipelines over this path, one at a time: **eventtype** (the default —
+The stack runs **two independent pipelines** over this path, one at a time: **eventtype** (the default —
 `IMAGE` / `DATA` events landing in MinIO and PostgreSQL) and **userKeys** (`{userId, key, value}`
 events summed by key over event-time windows into PostgreSQL).
 
@@ -22,11 +22,8 @@ Both the data-path handling and the ingestion gate are backed by 100+ tests, inc
 Testcontainers integration suites; the CI badge above gates the backend and Flink unit tests only,
 while the integration and frontend suites are run separately.
 
-The eventtype pipeline has been load-tested at **~10K ingestion req/s** over a multi-hour run (250M+ requests, zero failures) —
-with load generation, ingestion, and the processing pipeline as distinct roles across networked
-machines — and Flink draining the resulting Kafka backlog into Postgres at
-**~12K events/s**.
-See [Load testing](docs/eventtype/TESTING.md#load-testing--ingestion-vs-drain) for the measured numbers.
+The eventtype pipeline's **DATA ingestion path** has been load-tested at **~10K req/s** over a multi-hour run (~250M+ requests, zero failures) — with load generation, ingestion, and the processing pipeline as distinct roles across networked machines — and Flink draining the resulting Kafka backlog into Postgres at **~12K events/s**.
+See [Load testing](docs/TESTING.md#load-testing--ingestion-vs-drain) for the methodology.
 
 ### Out of scope
 

@@ -10,7 +10,7 @@ without relying on idempotent upserts.
 ```mermaid
 flowchart LR
   client([HTTP client / JMeter]) -->|POST /api/user-keys| backend[Spring Boot backend]
-  backend -->|publish, key = userId\|key| topic[(Kafka: user-keys)]
+  backend -->|publish, key = userId#124;key| topic[(Kafka: user-keys)]
   topic --> parse[parse + validate]
 
   subgraph flink[Flink job: Kafka -> Postgres userKeys]
@@ -47,8 +47,8 @@ auto-commit disabled so offsets advance only when a Flink checkpoint succeeds. P
    keep flowing; once the stream goes fully silent the watermark freezes and the trailing window
    fires only when ingestion resumes.
 3. **Key and window** — events are keyed by `(userId, key)` and grouped into tumbling event-time
-   windows of `USERKEYS_WINDOW_SECONDS` (default 60). Allowed lateness is zero and each window fires
-   exactly once, so a window emits a single result and can never re-fire onto an already-written row.
+   windows of `USERKEYS_WINDOW_SECONDS` (default 60). Allowed lateness is zero, so each window fires
+   exactly once and emits a single result.
 4. **Sum** — an incremental aggregate keeps one running `long` per active `(userId, key)`, so window
    state grows with the number of distinct active keys, not with event volume or window length.
 5. **Sink** — each window result is written to `user_key_aggregates` as a plain `INSERT`.
@@ -93,30 +93,21 @@ Database `userkeys`, table `user_key_aggregates`:
 The primary key is `(window_start, user_id, key)`. `window_start` leads the key so inserts append in
 event-time order at the index's right edge.
 
-## Error surface and how it is covered
+## Error surface
 
-The pipeline has a deliberately small set of failure modes, each handled at a defined point:
+The Flink parse stage re-validates every record — **defense-in-depth, not the expected route.** Since
+the backend already rejects malformed input at ingestion and `user-keys` is private to it, a record
+reaching this guard means a non-backend writer or a schema skew, not normal traffic — in steady state
+this DLQ stays empty. It diverts unparseable JSON, a missing or wrong-typed `id`/`eventTime`/`userId`/`key`,
+a non-numeric `value`, or a NUL byte in `userId`/`key` (the one input the backend's `@NotBlank` permits
+but a Postgres text column rejects) to the `user-keys-dlq` topic, with the raw event plus reason,
+counted as a Prometheus metric. Diverting upstream of the sink keeps its input strictly writable, so a
+poison row can never stall the windowed-aggregate commit. The dead-letter sink is at-least-once flushed
+per checkpoint: a duplicate dead-letter is acceptable, silent loss is not.
 
-- **Malformed or invalid input** — unparseable JSON, a missing or wrong-typed `id`, `eventTime`,
-  `userId`, `key`, or `value`, or a NUL byte in `userId`/`key` (which a Postgres text column cannot
-  store). These are caught at the parse stage and emitted to the `user-keys-dlq` topic as a
-  dead-letter record carrying the raw event and the reason, then counted as a Prometheus metric.
-  Diverting them here, upstream of the sink, keeps the sink's input strictly writable, so a poison
-  record can never stall the windowed-aggregate commit. The dead-letter sink uses at-least-once
-  delivery flushed at each checkpoint: a duplicate dead-letter is acceptable, silent loss is not.
-- **Transient database or network faults** — a dropped connection, a deadlock, an operator-intervention
-  error, or a socket timeout fails the in-flight checkpoint. Flink rolls back the prepared XA
-  transaction and restarts the job from the last checkpoint with exponential backoff; the XA protocol
-  guarantees the replay commits each window result exactly once. Bounded JDBC timeouts ensure such a
-  fault surfaces within the checkpoint budget rather than hanging.
-- **A row that cannot be written at all** — the only permanent write failure the sink could hit is a
-  primary-key collision, which the exactly-once + single-firing-window design makes impossible in
-  normal operation. If one ever occurred it would indicate a broken invariant (for example a manual
-  write into the table), and failing loudly via the restart loop is the correct response rather than
-  silently discarding the result.
-- **In-doubt transactions after a crash** — if the job dies between prepare and commit, the prepared
-  XA transaction is discovered and rolled back on recovery, so it neither commits twice nor pins
-  resources indefinitely.
+Every other fault — a transient database or network error, or a crash between prepare and commit — is
+absorbed by the checkpoint-restart cycle described under [Exactly-once delivery](#exactly-once-delivery-into-postgres);
+nothing here is application-specific.
 
 ## Observability
 
@@ -132,10 +123,9 @@ windowed sums.
 One pipeline runs at a time, selected by Compose profile:
 
 ```bash
-./scripts/start.sh --pipeline userkeys                 # start the stack with this pipeline
-./scripts/start.sh --restart --pipeline userkeys       # switch to it from another pipeline
-./scripts/userkeys/send-event.sh                       # send a burst and verify the windowed sum
-./scripts/jmeter-helper.sh --pipeline userkeys -t 50 -i 20   # load-test ingestion
+./scripts/start.sh --pipeline userkeys           # start the stack (add --restart to switch from another pipeline)
+./scripts/userkeys/send-event.sh                 # send a burst and verify the windowed sum
+./scripts/jmeter-helper.sh --pipeline userkeys   # load-test ingestion
 ```
 
 `send-event.sh` sends a burst for one `(userId, key)` and then emits heartbeat events on a throwaway
