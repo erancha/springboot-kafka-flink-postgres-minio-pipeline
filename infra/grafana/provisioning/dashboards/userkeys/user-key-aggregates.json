@@ -1,7 +1,10 @@
 {
   "uid": "userkeys-aggregates",
-  "title": "userKeys Aggregates Analytics",
-  "tags": ["webcharm", "assignment", "userkeys"],
+  "title": "userKeys Stored Aggregates Analytics",
+  "tags": [
+    "assignment",
+    "pipeline_userkeys"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,

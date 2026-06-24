@@ -1,109 +1,348 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": false,
   "graphTooltip": 1,
   "title": "userKeys Pipeline Health",
   "uid": "userkeys-pipeline-health",
-  "tags": ["pipeline", "flink", "operability", "userkeys"],
+  "tags": [
+    "flink",
+    "operability",
+    "pipeline",
+    "pipeline_userkeys"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "refresh": "15s",
-  "timepicker": { "refresh_intervals": ["5s", "10s", "15s", "30s", "1m", "5m", "15m", "30m", "1h"] },
-  "templating": { "list": [] },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "15s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "templating": {
+    "list": []
+  },
   "panels": [
     {
       "id": 100,
       "type": "row",
       "title": "Health — is the pipeline OK at 3am?",
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "id": 1,
       "type": "stat",
       "title": "Flink scrape targets up",
-      "description": "Number of Flink Prometheus endpoints (JobManager + TaskManager) Prometheus is successfully scraping. 0 means metrics are blind.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
-      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum(up{job=\"flink\"})" } ]
+      "description": "Flink metrics endpoints being scraped (JobManager + TaskManager). Below the full count means the panels below are going blind.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(up{job=\"flink\"})"
+        }
+      ]
     },
     {
       "id": 2,
       "type": "timeseries",
       "title": "Job restarts (per window)",
-      "description": "Full restarts of the userKeys streaming job within the selected time range (windowed increase of the cumulative counter). A flat 0 is healthy; a step shows exactly when a restart occurred so it can be correlated with load or checkpoint events.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "stepAfter" } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numRestarts{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[$__rate_interval]))", "legendFormat": "restarts" } ]
+      "description": "Should be flat 0. A step up = the job restarted then; line it up against a load spike or checkpoint failure.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(increase(flink_jobmanager_job_numRestarts{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[$__rate_interval]))",
+          "legendFormat": "restarts"
+        }
+      ]
     },
     {
       "id": 3,
       "type": "timeseries",
       "title": "Failed checkpoints (per window)",
-      "description": "Checkpoints that failed within the selected time range (windowed increase). 0 during healthy operation; the benign one-time startup trigger-abort drops out because the lifetime counter stays flat. A nonzero step means checkpoints are failing now and is correlatable in time.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "stepAfter" } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numberOfFailedCheckpoints{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[$__rate_interval]))", "legendFormat": "failed checkpoints" } ]
+      "description": "Should be flat 0 (the one-time startup abort doesn't show here). A step up = checkpoints failing now, so the job can't commit progress.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(increase(flink_jobmanager_job_numberOfFailedCheckpoints{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[$__rate_interval]))",
+          "legendFormat": "failed checkpoints"
+        }
+      ]
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Last checkpoint duration",
-      "description": "Duration of the most recent checkpoint over time (auto-scaled: ms for fast checkpoints, s for slow ones). A flat low line is healthy; a trend toward the 60s checkpoint timeout indicates backpressure or a slow write path.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
-      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 30000 }, { "color": "red", "value": 55000 } ] } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointDuration{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "last checkpoint duration" } ]
+      "description": "Time for the latest checkpoint (interval 10s, timeout 60s). Flat and low is healthy; climbing toward 60s — panel turns orange at 30s, red at 55s — means a slow write path or backpressure.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30000
+              },
+              {
+                "color": "red",
+                "value": 55000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(flink_jobmanager_job_lastCheckpointDuration{job_name=\"Kafka__Flink__Postgres__userKeys_\"})",
+          "legendFormat": "last checkpoint duration"
+        }
+      ]
     },
     {
       "id": 14,
       "type": "timeseries",
       "title": "Last checkpoint size",
-      "description": "On-disk size of the most recent completed checkpoint for the userKeys job. The state is the open tumbling-window accumulators (per (user_id, key) running sum), so size tracks the number of distinct keys in flight; a steady climb that never drops back after windows fire points at unbounded key growth.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 6 },
-      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointSize{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "last checkpoint size" } ]
+      "description": "State is one running sum per open (user, key) window, so size = keys in flight. Healthy rises and falls as windows fire; a climb that never drops back = unbounded key growth (a state leak).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(flink_jobmanager_job_lastCheckpointSize{job_name=\"Kafka__Flink__Postgres__userKeys_\"})",
+          "legendFormat": "last checkpoint size"
+        }
+      ]
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Kafka consumer lag — committed (Kafka) vs pending (Flink)",
-      "description": "Two views of how far behind ingest the userKeys pipeline is, on one axis so the gap is visible. 'committed lag (Kafka)' = latest - committed offset from kafka-exporter for consumer group flink-userkeys-processor on the user-keys topic; Flink commits offsets only on a successful checkpoint, so this is the authoritative durable-progress signal and matches Kafka UI. 'pending records (Flink)' = latest - in-flight read position from Flink's own gauge, reported only while the source task is RUNNING. Healthy: both small, committed riding slightly above pending in a checkpoint-interval sawtooth. A widening gap (committed climbing while pending stays low or goes stale) means checkpoints are not completing, so offsets stop committing — the canonical 'are we keeping up' alarm, hence Health not Throughput.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "description": "Committed lag (Kafka) is the signal: records past the offset Flink has durably committed. Flink commits only on checkpoint, so it sawtooths, dropping every ~10s; tens of thousands under load is fine while it keeps falling back. Trouble is a floor that climbs and never recovers (falling behind). Pending records (Flink) is Flink's own count of un-read Kafka backlog — usually 0 in this deployment, so ignore it unless it holds a large value.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-userkeys-processor\",topic=\"user-keys\"})", "legendFormat": "committed lag (Kafka)" },
-        { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "pending records (Flink)" }
+        {
+          "refId": "A",
+          "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-userkeys-processor\",topic=\"user-keys\"})",
+          "legendFormat": "committed lag (Kafka)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka__Flink__Postgres__userKeys_\"})",
+          "legendFormat": "pending records (Flink)"
+        }
       ]
     },
     {
       "id": 6,
       "type": "timeseries",
       "title": "DLQ records / sec by stage",
-      "description": "Rate of dead-letter records emitted, broken down by the originating pipeline stage. The userKeys job dead-letters only at the parse stage (PARSE), so a single series is expected; sink-side permanent failures surface as checkpoint/job failures and a restart loop, not DLQ routing. Backed by the custom dlq_records counter on the dlq-meter operator.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
-      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum by (stage) (rate(flink_taskmanager_job_task_operator_stage_dlq_records{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[5m]))", "legendFormat": "{{stage}}" } ]
+      "description": "Should be flat 0. Only the parse stage dead-letters here, so expect a single PARSE series. Sink-side failures don't show here — they surface as failed checkpoints and a restart loop.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (stage) (rate(flink_taskmanager_job_task_operator_stage_dlq_records{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[5m]))",
+          "legendFormat": "{{stage}}"
+        }
+      ]
     },
     {
       "id": 8,
       "type": "timeseries",
       "title": "Backpressure & busy time (ms/s per task)",
-      "description": "Per-task time spent backpressured vs busy for the userKeys job. Backpressure approaching 1000 ms/s means a downstream operator (the XA Postgres sink) is the bottleneck.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
-      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "description": "Per task, ms/s. Busy is normal work. Backpressure climbing toward 1000 (fully blocked) = the Postgres sink can't keep up and is the bottleneck.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "avg(flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "backpressured" },
-        { "refId": "B", "expr": "avg(flink_taskmanager_job_task_busyTimeMsPerSecond{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "busy" }
+        {
+          "refId": "A",
+          "expr": "avg(flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job_name=\"Kafka__Flink__Postgres__userKeys_\"})",
+          "legendFormat": "backpressured"
+        },
+        {
+          "refId": "B",
+          "expr": "avg(flink_taskmanager_job_task_busyTimeMsPerSecond{job_name=\"Kafka__Flink__Postgres__userKeys_\"})",
+          "legendFormat": "busy"
+        }
       ]
     },
     {
@@ -111,40 +350,119 @@
       "type": "row",
       "title": "Throughput & performance — workload shape, not paging signals",
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      }
     },
     {
       "id": 13,
       "type": "timeseries",
       "title": "Kafka consumer lag — committed (Kafka) vs pending (Flink)",
-      "description": "Mirror of the Health-row lag panel, stacked directly above records/sec so lag can be cross-referenced against throughput without leaving the Throughput view: rising committed lag while records/sec is flat means the pipeline, not the inbound rate, is the bottleneck. Both series (committed lag from kafka-exporter, pending records from Flink) share the Health-row panel's meaning; the paging-grade copy lives in the Health row.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "description": "Committed lag climbing while records/sec stays flat = the pipeline, not the inbound rate, is the bottleneck.\n\n(Same lag pair as the Health row, placed beside records/sec to read lag against throughput; full meaning lives there.)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-userkeys-processor\",topic=\"user-keys\"})", "legendFormat": "committed lag (Kafka)" },
-        { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "pending records (Flink)" }
+        {
+          "refId": "A",
+          "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-userkeys-processor\",topic=\"user-keys\"})",
+          "legendFormat": "committed lag (Kafka)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka__Flink__Postgres__userKeys_\"})",
+          "legendFormat": "pending records (Flink)"
+        }
       ]
     },
     {
       "id": 9,
       "type": "timeseries",
       "title": "Aggregate rows produced / sec",
-      "description": "Per-second rate of window-result rows entering the Postgres write operator (user_key_agg_to_postgres). Reporter-native numRecordsIn, no custom code. One row per closed (user_id, key) tumbling window, so this is window-firing throughput, not the inbound event rate. Physical persistence is batched: the XA sink commits one transaction per checkpoint, so these rows reach Postgres in checkpoint-sized batches rather than continuously.",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka__Flink__Postgres__userKeys_\",operator_name=\"user_key_agg_to_postgres:_Writer\"}[5m]))", "legendFormat": "aggregate rows/sec" } ]
+      "description": "Window-result rows to Postgres/sec — one per closed (user, key) 60s window, so this is the window-firing rate, not inbound events. Lands in checkpoint-sized batches. A drop to 0 while events keep arriving = windows not firing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka__Flink__Postgres__userKeys_\",operator_name=\"user_key_agg_to_postgres:_Writer\"}[5m]))",
+          "legendFormat": "aggregate rows/sec"
+        }
+      ]
     },
     {
       "id": 11,
       "type": "timeseries",
       "title": "Cumulative aggregate rows written",
-      "description": "Running total of window-aggregate rows entering the Postgres write operator since the job started. Same numRecordsIn series as aggregate rows/sec (to the left), shown as the raw counter for the long-run row volume. Resets to 0 on a job restart (expected).",
-      "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka__Flink__Postgres__userKeys_\",operator_name=\"user_key_agg_to_postgres:_Writer\"})", "legendFormat": "aggregate rows" } ]
+      "description": "Lifetime window-result rows written to Postgres. Resets to 0 on a job restart (expected).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-pipeline"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka__Flink__Postgres__userKeys_\",operator_name=\"user_key_agg_to_postgres:_Writer\"})",
+          "legendFormat": "aggregate rows"
+        }
+      ]
     }
   ]
 }

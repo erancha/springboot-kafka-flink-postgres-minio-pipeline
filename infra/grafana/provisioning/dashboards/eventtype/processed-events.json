@@ -1,9 +1,9 @@
 {
   "uid": "processed-events",
-  "title": "eventtype Processed Events Analytics",
+  "title": "eventtype Stored Aggregates Analytics",
   "tags": [
-    "webcharm",
-    "assignment"
+    "assignment",
+    "pipeline_eventtype"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
