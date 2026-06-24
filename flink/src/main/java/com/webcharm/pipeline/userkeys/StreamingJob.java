@@ -1,9 +1,10 @@
 package com.webcharm.pipeline.userkeys;
 
 import com.webcharm.pipeline.common.config.EnvConfig;
+import com.webcharm.pipeline.common.config.JobEnvironment;
 import com.webcharm.pipeline.common.dlq.DlqMeterFunction;
 import com.webcharm.pipeline.common.dlq.DlqRecord;
-import com.webcharm.pipeline.common.dlq.DlqRecordSerializer;
+import com.webcharm.pipeline.common.dlq.DlqSink;
 import com.webcharm.pipeline.userkeys.functions.ParseUserKeyFunction;
 import com.webcharm.pipeline.userkeys.functions.SumAggregateFunction;
 import com.webcharm.pipeline.userkeys.types.DlqStage;
@@ -17,21 +18,14 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.ExternalizedCheckpointRetention;
-import org.apache.flink.configuration.RestartStrategyOptions;
-import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.jdbc.JdbcExactlyOnceOptions;
 import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
 import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.connector.jdbc.core.datastream.sink.JdbcSink;
-import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
-import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
-import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
@@ -70,28 +64,7 @@ public class StreamingJob {
     Duration window = Duration.ofSeconds(EnvConfig.envInt("USERKEYS_WINDOW_SECONDS", 60));
 
     StreamExecutionEnvironment executionEnv = StreamExecutionEnvironment.getExecutionEnvironment();
-    executionEnv.enableCheckpointing(10_000);
-
-    // Retry indefinitely with exponential back-off; let Flink HA keep restarting the job rather
-    // than capping attempts and letting it die.
-    Configuration restartCfg = new Configuration();
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY, "exponential-delay");
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_INITIAL_BACKOFF, Duration.ofSeconds(5));
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_MAX_BACKOFF, Duration.ofMinutes(10));
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_BACKOFF_MULTIPLIER, 2.0);
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD,
-        Duration.ofMinutes(10));
-    restartCfg.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
-    executionEnv.configure(restartCfg);
-
-    // The XA sink prepares one transaction per checkpoint and commits it on completion, so
-    // maxConcurrentCheckpoints stays 1: at most one prepared transaction is in flight per sink
-    // subtask, which bounds the Postgres max_prepared_transactions the deployment must provision.
-    CheckpointConfig ckptConfig = executionEnv.getCheckpointConfig();
-    ckptConfig.setMinPauseBetweenCheckpoints(5_000);
-    ckptConfig.setCheckpointTimeout(60_000);
-    ckptConfig.setMaxConcurrentCheckpoints(1);
-    ckptConfig.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
+    JobEnvironment.configureFaultTolerance(executionEnv);
 
     KafkaSource<String> source = KafkaSource.<String>builder()
         .setBootstrapServers(kafkaBootstrap)
@@ -137,7 +110,7 @@ public class StreamingJob {
     parseErrors
         .map(new DlqMeterFunction<>(DlqStage.class))
         .name("dlq-meter")
-        .sinkTo(buildDlqSink(kafkaBootstrap, dlqTopic))
+        .sinkTo(DlqSink.build(kafkaBootstrap, dlqTopic))
         .name("dlq-sink");
 
     log.info("Starting userKeys StreamingJob: bootstrap={} topic={} windowSecs={}",
@@ -206,23 +179,5 @@ public class StreamingJob {
         .buildExactlyOnce(
             JdbcExactlyOnceOptions.builder().withTransactionPerConnection(true).build(),
             xaDataSource);
-  }
-
-  /**
-   * Builds a KafkaSink that writes DlqRecords to the given topic with AT_LEAST_ONCE delivery.
-   * AT_LEAST_ONCE flushes pending records at each Flink checkpoint, so a task restart after emitting
-   * a DLQ record but before the checkpoint cannot silently drop it. Duplicates are acceptable on the
-   * DLQ; silent loss is not.
-   */
-  private static KafkaSink<DlqRecord> buildDlqSink(String kafkaBootstrap, String dlqTopic) {
-    return KafkaSink.<DlqRecord>builder()
-        .setBootstrapServers(kafkaBootstrap)
-        .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-        .setRecordSerializer(
-            KafkaRecordSerializationSchema.<DlqRecord>builder()
-                .setTopic(dlqTopic)
-                .setValueSerializationSchema(new DlqRecordSerializer())
-                .build())
-        .build();
   }
 }
