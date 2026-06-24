@@ -27,3 +27,4 @@ jmeter/.runtime/
 jmeter/results/
 
 infra/prometheus/targets/
+temp/
