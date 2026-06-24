@@ -38,7 +38,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
       "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "stepAfter" } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numRestarts{job_name=\"Kafka->Flink->Postgres (userKeys)\"}[$__rate_interval]))", "legendFormat": "restarts" } ]
+      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numRestarts{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[$__rate_interval]))", "legendFormat": "restarts" } ]
     },
     {
       "id": 3,
@@ -48,7 +48,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "stepAfter" } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numberOfFailedCheckpoints{job_name=\"Kafka->Flink->Postgres (userKeys)\"}[$__rate_interval]))", "legendFormat": "failed checkpoints" } ]
+      "targets": [ { "refId": "A", "expr": "max(increase(flink_jobmanager_job_numberOfFailedCheckpoints{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[$__rate_interval]))", "legendFormat": "failed checkpoints" } ]
     },
     {
       "id": 4,
@@ -58,7 +58,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 30000 }, { "color": "red", "value": 55000 } ] } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointDuration{job_name=\"Kafka->Flink->Postgres (userKeys)\"})", "legendFormat": "last checkpoint duration" } ]
+      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointDuration{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "last checkpoint duration" } ]
     },
     {
       "id": 14,
@@ -68,7 +68,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 5, "w": 12, "x": 0, "y": 6 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointSize{job_name=\"Kafka->Flink->Postgres (userKeys)\"})", "legendFormat": "last checkpoint size" } ]
+      "targets": [ { "refId": "A", "expr": "max(flink_jobmanager_job_lastCheckpointSize{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "last checkpoint size" } ]
     },
     {
       "id": 5,
@@ -80,7 +80,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         { "refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-userkeys-processor\",topic=\"user-keys\"})", "legendFormat": "committed lag (Kafka)" },
-        { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka->Flink->Postgres (userKeys)\"})", "legendFormat": "pending records (Flink)" }
+        { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "pending records (Flink)" }
       ]
     },
     {
@@ -91,7 +91,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
       "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum by (stage) (rate(flink_taskmanager_job_task_operator_stage_dlq_records{job_name=\"Kafka->Flink->Postgres (userKeys)\"}[5m]))", "legendFormat": "{{stage}}" } ]
+      "targets": [ { "refId": "A", "expr": "sum by (stage) (rate(flink_taskmanager_job_task_operator_stage_dlq_records{job_name=\"Kafka__Flink__Postgres__userKeys_\"}[5m]))", "legendFormat": "{{stage}}" } ]
     },
     {
       "id": 8,
@@ -102,8 +102,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "avg(flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job_name=\"Kafka->Flink->Postgres (userKeys)\"})", "legendFormat": "backpressured" },
-        { "refId": "B", "expr": "avg(flink_taskmanager_job_task_busyTimeMsPerSecond{job_name=\"Kafka->Flink->Postgres (userKeys)\"})", "legendFormat": "busy" }
+        { "refId": "A", "expr": "avg(flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "backpressured" },
+        { "refId": "B", "expr": "avg(flink_taskmanager_job_task_busyTimeMsPerSecond{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "busy" }
       ]
     },
     {
@@ -123,7 +123,7 @@
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
         { "refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"flink-userkeys-processor\",topic=\"user-keys\"})", "legendFormat": "committed lag (Kafka)" },
-        { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka->Flink->Postgres (userKeys)\"})", "legendFormat": "pending records (Flink)" }
+        { "refId": "B", "expr": "sum(flink_taskmanager_job_task_operator_pendingRecords{job_name=\"Kafka__Flink__Postgres__userKeys_\"})", "legendFormat": "pending records (Flink)" }
       ]
     },
     {
@@ -134,7 +134,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka->Flink->Postgres (userKeys)\",operator_name=\"user_key_agg_to_postgres\"}[5m]))", "legendFormat": "aggregate rows/sec" } ]
+      "targets": [ { "refId": "A", "expr": "sum(rate(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka__Flink__Postgres__userKeys_\",operator_name=\"user_key_agg_to_postgres:_Writer\"}[5m]))", "legendFormat": "aggregate rows/sec" } ]
     },
     {
       "id": 11,
@@ -144,7 +144,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus-pipeline" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "targets": [ { "refId": "A", "expr": "sum(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka->Flink->Postgres (userKeys)\",operator_name=\"user_key_agg_to_postgres\"})", "legendFormat": "aggregate rows" } ]
+      "targets": [ { "refId": "A", "expr": "sum(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"Kafka__Flink__Postgres__userKeys_\",operator_name=\"user_key_agg_to_postgres:_Writer\"})", "legendFormat": "aggregate rows" } ]
     }
   ]
 }
