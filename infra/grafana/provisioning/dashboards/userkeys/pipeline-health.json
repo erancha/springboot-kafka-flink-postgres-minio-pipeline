@@ -399,7 +399,7 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Aggregate rows produced / sec",
+      "title": "Aggregate rows written / sec",
       "description": "Window-result rows to Postgres/sec — one per closed (user, key) 60s window, so this is the window-firing rate, not inbound events. Lands in checkpoint-sized batches. A drop to 0 while events keep arriving = windows not firing.",
       "datasource": {
         "type": "prometheus",
@@ -433,7 +433,7 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "Cumulative aggregate rows written",
+      "title": "Aggregate rows written — cumulative",
       "description": "Lifetime window-result rows written to Postgres. Resets to 0 on a job restart (expected).",
       "datasource": {
         "type": "prometheus",
