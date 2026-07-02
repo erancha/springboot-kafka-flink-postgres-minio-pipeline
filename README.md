@@ -123,7 +123,7 @@ The stack runs one pipeline at a time; select it with `--pipeline` (default `eve
 
 Switching pipelines reuses the same images — no rebuild — but needs `--restart` so the prior
 pipeline's job is cleared: `./scripts/start.sh --restart --pipeline userkeys`. After editing backend
-or Flink source, add `--rebuild` to recompile the jar into the image:
+or Flink source, add `--rebuild` to recompile the jar into the image, e.g:
 
 ```bash
 ./scripts/start.sh --pipeline userkeys --rebuild
@@ -135,10 +135,7 @@ Additional commands:
 ./scripts/start.sh --help                        # start options; after editing code/env, re-apply with --rebuild <service>
 ./scripts/docker-helper.sh --help                # build images (--build), stop the stack (--stop), or stream logs (--logs)
 ./scripts/test.sh --help                         # run tests; see docs/TESTING.md for suite details
-./scripts/eventtype/send-event.sh --help         # eventtype: send one DATA and/or IMAGE event and show where it landed
-./scripts/userkeys/send-event.sh --help          # userKeys: send a burst and show the windowed sum
-
-./scripts/eventtype/compare-images.sh            # eventtype only: compare image counts in MinIO vs PostgreSQL
+./scripts/<pipeline>/send-event.sh --help        # send event(s)
 ```
 
 ## Testing
