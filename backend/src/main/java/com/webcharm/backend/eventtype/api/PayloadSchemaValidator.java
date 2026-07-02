@@ -15,7 +15,10 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
-/** Validates a JSON object against a JSON Schema. */
+/**
+ * Validates DATA payloads against the JSON Schema configured via EVENT_PAYLOAD_SCHEMA; a blank
+ * setting disables validation entirely.
+ */
 @Component
 public class PayloadSchemaValidator {
 

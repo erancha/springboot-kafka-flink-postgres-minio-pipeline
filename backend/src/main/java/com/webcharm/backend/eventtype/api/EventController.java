@@ -29,7 +29,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-/** REST controller that publishes events to Kafka; delegates object storage uploads to ImageUploadService for file-upload requests. */
+/**
+ * REST controller that publishes events to Kafka; delegates object storage uploads to
+ * ImageUploadService for file-upload requests.
+ */
 @RestController
 @RequestMapping("/api")
 public class EventController {
@@ -82,8 +85,7 @@ public class EventController {
   /**
    * Validates the imageUrl for an IMAGE event: it must be present and a well-formed http(s) URL
    * whose host is in IMAGE_URL_ALLOWED_HOSTS. Guards against SSRF. An empty allowlist denies all
-   * URLs — the env var must be explicitly configured to permit any fetch. File uploads use the
-   * separate /api/events/image-upload endpoint and do not pass through here.
+   * URLs — the env var must be explicitly configured to permit any fetch.
    *
    * @throws IllegalArgumentException if the URL is null, blank, malformed, has no host, or uses a non-http(s) scheme
    * @throws SecurityException if the allowlist is unconfigured or the host is absent from the allowlist
@@ -122,8 +124,8 @@ public class EventController {
   /**
    * Rejects uploads that are not storable images: empty bodies, a missing or non-image
    * Content-Type, or bodies above the shared size cap. Content-Type is client-supplied, so this
-   * bounds what gets stored without authenticating the bytes. The cap sits below the Spring
-   * multipart limit, which only bounds heap.
+   * bounds what gets stored without authenticating the bytes. The cap sits deliberately below the
+   * Spring multipart limit so this domain rule, not the transport guard, decides rejection.
    */
   private void validateImageFile(MultipartFile file) {
     if (file.isEmpty()) {

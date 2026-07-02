@@ -72,8 +72,8 @@ public class ParseEventFunction extends ProcessFunction<String, ProcessedEvent> 
   }
 
   /**
-   * Parses a raw JSON string into a ProcessedEvent, extracting all known fields including
-   * imageObjectKey. The parse is a pure function of its input: id and eventTime are taken
+   * Parses a raw JSON string into a ProcessedEvent, extracting all known fields.
+   * The parse is a pure function of its input: id and eventTime are taken
    * verbatim from the message and a missing or blank value is rejected (thrown, hence routed
    * to the DLQ) rather than backfilled, so a checkpoint replay re-derives the identical
    * upsert key and the id-keyed idempotent write stays effective-exactly-once. An eventType

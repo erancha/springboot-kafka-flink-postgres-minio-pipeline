@@ -4,7 +4,7 @@ apiVersion: 1
 # Prometheus query (datasource prometheus-pipeline) with a threshold expression that produces
 # the firing condition. Flink-side metric names are verified against the Flink 2.2 prometheus
 # reporter on :9249; consumer-progress metrics come from kafka-exporter (job="kafka").
-# Checkpoint-failure and backpressure rules are deferred to a later pass.
+# OPEN — no checkpoint-failure or backpressure rules are provisioned.
 groups:
   - orgId: 1
     name: flink-health

@@ -22,7 +22,7 @@ x-flink-image: &flink-image
   image: pipeline-flink:local
 
 services:
-  # Kafka broker/controller (KRaft) used as the event streaming backbone for the assignment.
+  # Kafka broker/controller (KRaft) used as the event streaming backbone for both pipelines.
   kafka:
     image: apache/kafka:3.7.1
     # Memory caps below are sized for the 8GB WSL2 VM (see ~/.wslconfig): each limit sits above the
@@ -234,7 +234,7 @@ services:
       timeout: 5s
       retries: 20
 
-  # MinIO bootstrap job to create the images bucket required by the assignment pipeline; this is a one-shot init container and is expected to exit successfully.
+  # MinIO bootstrap job to create the images bucket required by the eventtype pipeline; this is a one-shot init container and is expected to exit successfully.
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     profiles: ["eventtype"]
@@ -248,7 +248,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    # CPU weight; ~50% of the 1024 default deprioritizes it when cores are saturated (no-op when free).
+    # Uncomment to deprioritize the backend when cores are saturated — ~50% of the 1024 default
+    # CPU weight (no-op when cores are free).
     # cpu_shares: 512
     deploy:
       resources:
@@ -279,7 +280,7 @@ services:
       kafka:
         condition: service_healthy
 
-  # Flink JobManager providing the stream processing control plane for the assignment.
+  # Flink JobManager providing the stream processing control plane for both pipelines.
   flink-jobmanager:
     <<: *flink-image
     command: jobmanager
@@ -310,7 +311,8 @@ services:
   flink-taskmanager:
     <<: *flink-image
     command: taskmanager
-    # CPU weight; double the 1024 default prioritizes it when cores are saturated (no-op when free).
+    # Uncomment to prioritize the TaskManager when cores are saturated — double the 1024 default
+    # CPU weight (no-op when cores are free).
     # cpu_shares: 2048
     deploy:
       resources:

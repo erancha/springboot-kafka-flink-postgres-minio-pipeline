@@ -43,7 +43,6 @@ class MinioConfig {
         .build();
   }
 
-  /** Builds the backing OkHttpClient, converting the second-valued timeouts to the SDK's millis. */
   static OkHttpClient httpClient(int connectTimeoutSecs, int writeTimeoutSecs,
       int readTimeoutSecs) {
     return HttpUtils.newDefaultHttpClient(

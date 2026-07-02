@@ -28,18 +28,17 @@ public class MinioUploadService implements ImageUploadService {
   }
 
   /**
-   * Uploads file bytes to MinIO under key images/{date}/{id}.{ext} and returns that key.
-   * Streams from file.getInputStream() without buffering the body in heap.
-   * Throws ObjectStoreException if the MinIO call fails.
-   * Lets IOException from file.getInputStream() propagate (mapped to 500 by GlobalExceptionHandler).
+   * Uploads file bytes to MinIO under key images/{date}/{id}.{ext} and returns that key, streaming
+   * the multipart body rather than buffering it in heap.
+   *
+   * @throws ObjectStoreException if the MinIO upload fails
+   * @throws IOException if opening the multipart stream fails
    */
   public String upload(UUID id, Instant eventTime, MultipartFile file) throws IOException {
     String contentType = file.getContentType() != null ? file.getContentType() : "image/jpeg";
     String objectKey = ImageObjectKey.of(
         eventTime.atZone(ZoneOffset.UTC).toLocalDate(), id, ImageFormat.extensionForContentType(contentType));
 
-    // getInputStream() IOException propagates directly (stream open failure is not a MinIO error).
-    // All putObject exceptions are wrapped as ObjectStoreException (MinIO failure).
     try (InputStream imageStream = file.getInputStream()) {
       try {
         minioClient.putObject(

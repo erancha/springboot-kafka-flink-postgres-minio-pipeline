@@ -49,8 +49,8 @@ abstract class JdbcWriterBase<T> implements JdbcWriter<T> {
   // Bounded so the worst case (attempts x query timeout + reconnect + backoff) stays under the
   // 60 s checkpoint timeout. Default 2 attempts, 20 s query/socket (JDBC_*_TIMEOUT_SECS),
   // 5 s connect, 8 s pool borrow => ~49 s worst case. The 20 s timeout lets a batch ride out a
-  // Postgres checkpoint I/O spike; the prior 8 s tripped on those spikes and forced a sink restart.
-  // Raising query/socket past ~25 s breaches the 60 s budget unless JDBC_MAX_ATTEMPTS is also cut.
+  // Postgres checkpoint I/O spike. Raising query/socket past ~25 s breaches the 60 s budget
+  // unless JDBC_MAX_ATTEMPTS is also cut.
   private static final int MAX_ATTEMPTS = Math.max(1, EnvConfig.envInt("JDBC_MAX_ATTEMPTS", 2));
   private static final int QUERY_TIMEOUT_SECS = EnvConfig.envInt("JDBC_QUERY_TIMEOUT_SECS", 20);
   private static final int SOCKET_TIMEOUT_SECS = EnvConfig.envInt("JDBC_SOCKET_TIMEOUT_SECS", 20);

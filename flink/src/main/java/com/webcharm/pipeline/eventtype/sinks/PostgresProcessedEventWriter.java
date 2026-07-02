@@ -11,10 +11,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * JDBC writer for processed_events. Payload sanitization is delegated to the parameterized
- * prepared statement (SQL injection prevention); no additional cleanPayload step is needed.
- */
+/** JDBC writer for processed_events; upserts one row per event id so checkpoint replay is idempotent. */
 public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent> {
 
   private static final Logger log = LoggerFactory.getLogger(PostgresProcessedEventWriter.class);
@@ -27,8 +24,8 @@ public class PostgresProcessedEventWriter extends JdbcWriterBase<ProcessedEvent>
 
   private final ObjectMapper mapper;
 
-  // High-volume path: batch size from JDBC_BATCH_SIZE (default 500). The aggregate sinks pass 1
-  // (per-row) since each window already coalesces to a single upsert.
+  // High-volume path, so batches are worthwhile; the aggregate writers stay per-row because each
+  // window already coalesces to a single upsert.
   public PostgresProcessedEventWriter() {
     super(envPool(), SQL, EnvConfig.envInt("JDBC_BATCH_SIZE", 500));
     this.mapper = new ObjectMapper();

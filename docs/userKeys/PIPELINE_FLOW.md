@@ -114,9 +114,9 @@ nothing here is application-specific.
 Flink exposes job, checkpoint, restart, and dead-letter metrics to Prometheus; Kafka consumer lag for
 `flink-userkeys-processor` comes from the Kafka exporter. The `userKeys Pipeline Health` Grafana
 dashboard renders job liveness, checkpoint duration and size, restarts, consumer lag, and dead-letter
-rate. A "Kafka consumer stalled" alert fires when the consumer group holds a backlog that is not
-draining. The `user-key-aggregates` dashboard reads the `user_key_aggregates` table directly for the
-windowed sums.
+rate. A "Kafka consumer stalled (userKeys)" alert fires when the consumer group holds a backlog that
+is not draining. The `userKeys Stored Aggregates Analytics` dashboard reads the `user_key_aggregates`
+table directly for the windowed sums.
 
 ## Running it
 

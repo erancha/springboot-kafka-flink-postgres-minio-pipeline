@@ -55,7 +55,6 @@ public class StreamingJob {
 
   /** Runs startup pre-flight checks before building and submitting the job graph. */
   public static void main(String[] args) throws Exception {
-    // Fail fast on a misconfigured deployment before submitting the job.
     PreflightChecks.run();
 
     String kafkaBootstrap = EnvConfig.env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");

@@ -43,9 +43,6 @@ ingestion — read that ceiling as load-generator-bound, not a true backend limi
 
 # on C — drive the load at B across the network (omit --backend-host when C runs on B):
 ./scripts/jmeter-helper.sh --pipeline <name> --backend-host <B-ip> -t 500 -i 20000
-
-# Example for loading a speicic pipeline:
-`--pipeline userkeys`
 ```
 
 `jmeter-helper.sh` marks a request done the instant B publishes it and Kafka acks — nothing
@@ -78,8 +75,7 @@ throughput under sustained traffic is uncharacterized. Load it with `--pipeline 
 ### userKeys — exactly-once under test
 
 `UserKeyAggregationIT` runs the windowed-sum topology and its XA exactly-once sink against a
-Testcontainers Postgres started with `max_prepared_transactions` enabled — XA requires it; the default
-of 0 disables prepared transactions. The sink does a plain `INSERT` keyed by
+Testcontainers Postgres started with `max_prepared_transactions` enabled. The sink does a plain `INSERT` keyed by
 `(window_start, user_id, key)` — no upsert — so a double commit would violate the primary key and fail
 the job; a clean run landing exactly the expected rows is the suite's evidence that each window
 committed once. The delivery mechanics (XA two-phase commit, `transactionPerConnection`,

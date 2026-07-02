@@ -30,10 +30,11 @@ Via CLI:
 ```
 
 Via Grafana dashboard:
-Access [http://localhost:3031](http://localhost:3031/d/processed-events/processed-events-analytics?orgId=1&refresh=10s) (user: `admin`, pass: `admin`), then:
+Access [http://localhost:3031](http://localhost:3031/d/processed-events/eventtype-stored-aggregates-analytics?orgId=1&refresh=10s) (user: `admin`, pass: `admin`), then:
 
-- Dashboards → Browse → **Processed Events Analytics**
+- Dashboards → Browse → **eventtype Stored Aggregates Analytics**
 
-Both CLI and Grafana execute the same SQL against PostgreSQL; the difference is presentation (one-off results vs. live dashboard).
+The CLI runs every query in `analytics.sql`; the Grafana dashboard renders only the Flink
+pre-aggregated tables (`event_type_counts_agg`, `image_size_buckets_agg`) as live panels.
 
 ![Grafana dashboard screenshot](../Grafana.jpg)

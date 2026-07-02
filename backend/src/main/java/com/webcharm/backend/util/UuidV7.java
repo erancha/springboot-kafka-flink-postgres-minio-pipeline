@@ -21,7 +21,6 @@ public final class UuidV7 {
 
   private UuidV7() {}
 
-  /** Returns a fresh time-ordered UUIDv7. */
   public static UUID next() {
     return GENERATOR.generate();
   }

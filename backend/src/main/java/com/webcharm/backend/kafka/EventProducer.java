@@ -21,7 +21,6 @@ public class EventProducer {
   private final ObjectMapper objectMapper;
   private final int sendTimeoutSeconds;
 
-  /** Spring constructor — all dependencies injected; sendTimeoutSeconds is bound from app.kafka.send-timeout-seconds (default in application.yml). */
   public EventProducer(
       KafkaTemplate<String, String> kafkaTemplate,
       ObjectMapper objectMapper,

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Collect one textual evidence bundle for a pipeline load-test investigation.
 # Usage: diagnose.sh [--since 3h] [--step 30]
-# Sections: stack status, run timeline + per-run metrics, Postgres table status,
-# recent error signatures. Interpretation is the caller's job (see SKILL.md).
+# Sections: stack status, run timeline + per-run metrics, alerts fired/resolved,
+# Postgres table status, recent error signatures. Interpretation is the caller's job (see SKILL.md).
 # The Docker stack must be up; this reads from it, it does not start or change it.
 set -euo pipefail
 

@@ -2,9 +2,9 @@
 
 ## Current State
 
-The backend has a storage abstraction in place: `ImageUploadService` (interface) and `ObjectStoreException` live in `backend/src/main/java/com/webcharm/backend/storage/` — vendor-neutral. `MinioUploadService` is the sole implementation and lives in the `minio` sub-package.
+The backend has a storage abstraction in place: `ImageUploadService` (interface) and its sole implementation `MinioUploadService` live in `backend/src/main/java/com/webcharm/backend/eventtype/storage/`; the vendor-neutral `ObjectStoreException` lives in `backend/src/main/java/com/webcharm/backend/storage/`. The `minio` sub-package holds only `MinioConfig`.
 
-The Flink job (`MinioUploadFunction`) talks to MinIO directly via `MinioClient`, wired in `open()` from env vars. There is no abstraction layer in Flink yet.
+The Flink job (`MinioAsyncImageFunction`) talks to MinIO directly via `MinioClient`, wired in `open()` from env vars. There is no abstraction layer in Flink yet.
 
 ```mermaid
 graph LR
@@ -12,7 +12,7 @@ graph LR
     MUS --> MC[MinioClient]
     MC --> MinIO[(MinIO)]
 
-    MUF[MinioUploadFunction\nFlink] --> MC2[MinioClient]
+    MUF[MinioAsyncImageFunction\nFlink] --> MC2[MinioClient]
     MC2 --> MinIO
 ```
 
@@ -36,7 +36,7 @@ graph LR
     end
 
     subgraph flink
-        MUF[MinioUploadFunction\nopen] -->|ImageUploadService| IF
+        MUF[MinioAsyncImageFunction\nopen] -->|ImageUploadService| IF
     end
 
     MMIUS --> MinIO[(MinIO)]
@@ -53,9 +53,9 @@ Add a `shared/` Maven module with no Spring, no Flink dependencies — only the 
 shared/
   pom.xml                          ← depends on minio SDK + AWS SDK
   src/main/java/com/webcharm/shared/storage/
-    ImageUploadService.java        ← move from backend/storage (unchanged)
+    ImageUploadService.java        ← move from backend/eventtype/storage (unchanged)
     ObjectStoreException.java      ← move from backend/storage (unchanged)
-    MinioImageUploadService.java   ← move + rename from backend/minio/MinioUploadService
+    MinioImageUploadService.java   ← move + rename from backend/eventtype/storage/MinioUploadService
     S3ImageUploadService.java      ← new
 ```
 
@@ -75,7 +75,7 @@ ImageUploadService imageUploadService(...) {
 }
 ```
 
-**Flink** — swap the instantiation in `MinioUploadFunction.open()`:
+**Flink** — swap the instantiation in `MinioAsyncImageFunction.open()`:
 ```java
 this.imageUploadService = new S3ImageUploadService(s3Client, bucket);
 ```

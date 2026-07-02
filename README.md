@@ -32,8 +32,8 @@ This is an exercise project focused on the data path's failure handling, not a p
 - **Authentication / authorization** — the ingestion edges (`POST /api/events` + the React UI for eventtype, `POST /api/user-keys` for userKeys) are unauthenticated local testers, not hardened production boundaries: no login, API key, tenant isolation, or rate limiting, with the eventtype SSRF allowlist as the only request-level guard.
 - **Secrets management & transport security** — credentials are supplied via a gitignored `.env`, but there is no Vault / Secrets Manager integration or rotation, and inter-service traffic on the local Docker network is plaintext (no TLS).
 - **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/eventtype/PIPELINE_FLOW.md#dlq-operations).
-- **High availability** — single Kafka broker (replication factor 1), single Flink JobManager/TaskManager, and unreplicated Postgres/MinIO; any single loss can mean data loss or downtime. See [Out of scope](docs/eventtype/PIPELINE_FLOW.md#out-of-scope).
-- **Production paging** — basic backend/Flink-health email alerts exist for both pipelines (see [Observability](docs/eventtype/PIPELINE_FLOW.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints, consumer lag, or the DLQ.
+- **High availability** — no horizontal replication or cluster-level failover anywhere in the stack, so any single loss can mean data loss or downtime. See [Out of scope](docs/eventtype/PIPELINE_FLOW.md#out-of-scope).
+- **Production paging** — basic backend/Flink-health email alerts exist for both pipelines (see [Observability](docs/eventtype/PIPELINE_FLOW.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints or the DLQ.
 
 ## Overview
 
@@ -44,7 +44,7 @@ pipeline. Events flow one direction — [Frontend → ] Backend → Kafka → Fl
   - **eventtype** (http://localhost:3030) — React UI; submits `IMAGE` / `DATA` events.
   - **userKeys** — no UI.
 - **Backend** (http://localhost:8030) — a narrow, synchronous
-  [validation gate](backend/src/main/java/com/webcharm/backend/api/EventController.java): every request
+  [validation gate](backend/src/main/java/com/webcharm/backend/eventtype/api/EventController.java): every request
   passes through it before anything reaches Kafka, rejected with a 4xx if malformed or disallowed. One
   gate serves both pipelines:
   - **eventtype** (`POST /api/events`) — validates and publishes event JSON, and uploads file bytes to
@@ -121,8 +121,9 @@ The stack runs one pipeline at a time; select it with `--pipeline` (default `eve
 ./scripts/start.sh --pipeline userkeys     # {userId, key, value} → windowed sums → Postgres
 ```
 
-Switching pipelines reuses the same images — no rebuild. After editing backend or Flink source, add
-`--rebuild` to recompile the jar into the image:
+Switching pipelines reuses the same images — no rebuild — but needs `--restart` so the prior
+pipeline's job is cleared: `./scripts/start.sh --restart --pipeline userkeys`. After editing backend
+or Flink source, add `--rebuild` to recompile the jar into the image:
 
 ```bash
 ./scripts/start.sh --pipeline userkeys --rebuild

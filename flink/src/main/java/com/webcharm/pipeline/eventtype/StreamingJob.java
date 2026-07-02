@@ -58,7 +58,6 @@ public class StreamingJob {
 
   /** Runs startup pre-flight checks, then builds the job graph and submits it to the Flink runtime. */
   public static void main(String[] args) throws Exception {
-    // Fail fast on a misconfigured deployment before submitting the job.
     PreflightChecks.run();
 
     String kafkaBootstrap = EnvConfig.env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092");
@@ -121,10 +120,10 @@ public class StreamingJob {
         .process(new PostgresImageSizeBucketCountAggWriteFunction(DlqStage.IMAGE_SIZE_BUCKET_COUNT_POSTGRES))
         .name("image-size-buckets-agg-to-postgres");
 
-    // All dead-letter paths converge on one Kafka producer. The union is type-safe — every input
-    // is a DataStream<DlqRecord> — and each record's DlqStage identifies its origin, so one sink
-    // serves every branch instead of one sink per branch. That single sink couples DLQ back-pressure
-    // across branches, but dead-letter volume is low (only failures), so it is an acceptable trade-off.
+    // All dead-letter paths converge on one Kafka producer; each record's DlqStage identifies its
+    // origin, so one sink serves every branch instead of one sink per branch. That single sink
+    // couples DLQ back-pressure across branches, but dead-letter volume is low (only failures),
+    // so it is an acceptable trade-off.
     parseErrors
         .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors, imageSizeCountErrors)
         .map(new DlqMeterFunction<>(DlqStage.class))
@@ -144,7 +143,6 @@ public class StreamingJob {
     return withWatermarks
         .keyBy(ProcessedEvent::getEventType)
         .window(TumblingEventTimeWindows.of(EVENT_TYPE_COUNT_WINDOW))
-        // Count events per type over each window.
         .aggregate(
             new CountAggregateFunction<ProcessedEvent>(),
             new ProcessWindowFunction<Long, EventTypeCountAgg, String, TimeWindow>() {
@@ -172,7 +170,6 @@ public class StreamingJob {
         // needed because a lambda's return type is not inferable.
         .keyBy(bucket -> bucket.label(), TypeInformation.of(String.class))
         .window(TumblingEventTimeWindows.of(IMAGE_SIZE_BUCKET_COUNT_WINDOW))
-        // Count stored images per size bucket over each window.
         .aggregate(
             new CountAggregateFunction<ImageSizeBucket>(),
             new ProcessWindowFunction<Long, ImageSizeBucketCountAgg, String, TimeWindow>() {
@@ -192,8 +189,9 @@ public class StreamingJob {
   /**
    * Wires the IMAGE branch as a Flink async I/O operator (non-blocking fetch plus MinIO upload,
    * framework-managed exponential-backoff retry on transient failures) followed by a non-blocking
-   * split. Returns the split operator whose main output is enriched events and whose
-   * EnrichSplitFunction.UPLOAD_ERROR_TAG side output carries DLQ records. The operator timeout
+   * split. Returns the split operator whose main output is enriched events, whose
+   * EnrichSplitFunction.UPLOAD_ERROR_TAG side output carries DLQ records, and whose
+   * IMAGE_SIZE_BUCKET_TAG side output feeds the size-bucket histogram. The operator timeout
    * is decoupled from the checkpoint timeout because the task thread never blocks.
    */
   static SingleOutputStreamOperator<ProcessedEvent> buildImagePipeline(

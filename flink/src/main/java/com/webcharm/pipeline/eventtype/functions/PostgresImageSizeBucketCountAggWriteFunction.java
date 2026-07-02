@@ -5,10 +5,7 @@ import com.webcharm.pipeline.eventtype.sinks.PostgresImageSizeBucketCountAggWrit
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.ImageSizeBucketCountAgg;
 
-/**
- * Writes ImageSizeBucketCountAgg records to Postgres and routes permanent JDBC failures to a DLQ.
- * Mirrors PostgresWriteFunction's fault-handling strategy for the size-histogram path.
- */
+/** Writes ImageSizeBucketCountAgg records to Postgres and routes permanent JDBC failures to a DLQ. */
 public class PostgresImageSizeBucketCountAggWriteFunction
     extends AbstractPostgresWriteFunction<ImageSizeBucketCountAgg> {
 

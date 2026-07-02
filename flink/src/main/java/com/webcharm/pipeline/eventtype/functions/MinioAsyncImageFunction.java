@@ -87,7 +87,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
 
   /**
    * Builds the MinIO client, redirect-blocking HTTP client, executor, and JSON mapper once per
-   * slot, and registers the retryable-failure and successful-upload metric counters with the
+   * slot, and registers the retryable-failure and upload throughput/latency counters with the
    * operator metric group.
    */
   @Override

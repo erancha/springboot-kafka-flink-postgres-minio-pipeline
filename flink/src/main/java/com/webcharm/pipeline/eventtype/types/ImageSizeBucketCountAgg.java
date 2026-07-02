@@ -3,6 +3,11 @@ package com.webcharm.pipeline.eventtype.types;
 import java.io.Serializable;
 import java.time.Instant;
 
+/**
+ * One window's stored-image count for a size bucket: the row written to image_size_buckets_agg. A
+ * mutable Flink POJO (no-arg constructor plus getters/setters) so Flink uses its POJO serializer
+ * for checkpoint and network transport.
+ */
 public class ImageSizeBucketCountAgg implements Serializable {
   private Instant windowStart;
   private Instant windowEnd;

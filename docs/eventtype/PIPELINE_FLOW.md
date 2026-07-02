@@ -76,8 +76,8 @@ The upsert keys (`id`, and the `eventTime`-derived MinIO object path) stay ident
 ### Checkpointing & recovery
 
 - Flink consumes the Kafka `events` topic through its `KafkaSource` connector, which tracks each partition's read position in Flink's own checkpoint state rather than in Kafka's consumer group: on restart it seeks each partition to the offset captured by the last successful checkpoint. Kafka auto-commit is disabled (`enable.auto.commit=false`). Flink still writes offsets back to Kafka, but only on a successful checkpoint and only so monitoring tools can compute consumer lag — how many messages sit between the committed offset and the topic's newest record. That committed offset is for visibility alone; recovery uses the checkpoint, never Kafka's committed offset.
-- Checkpoints run on a fixed interval (e.g. 10s) with a completion timeout (e.g. 60s), a minimum pause between them (e.g. 5s), and one checkpoint in flight at a time; checkpoints are externalized — retained on disk after cancellation (`RETAIN_ON_CANCELLATION`) so a cancelled job can resume from its last snapshot. The authoritative interval, timeout, and pause live in the checkpoint config block of [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java).
-- The restart strategy is exponential back-off (e.g. 5s initial, 2× multiplier, 10-min cap) with indefinite retries; the authoritative values are set alongside the checkpoint config in [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java).
+- Checkpoints run on a fixed interval (e.g. 10s) with a completion timeout (e.g. 60s), a minimum pause between them (e.g. 5s), and one checkpoint in flight at a time; checkpoints are externalized — retained on disk after cancellation (`RETAIN_ON_CANCELLATION`) so a cancelled job can resume from its last snapshot. The authoritative interval, timeout, and pause live in [`JobEnvironment.configureFaultTolerance`](../../flink/src/main/java/com/webcharm/pipeline/common/config/JobEnvironment.java), shared by both pipelines.
+- The restart strategy is exponential back-off (e.g. 5s initial, 2× multiplier, 10-min cap) with indefinite retries; the authoritative values are set alongside the checkpoint config in [`JobEnvironment.java`](../../flink/src/main/java/com/webcharm/pipeline/common/config/JobEnvironment.java).
 
 ### Bounded JDBC path
 
@@ -115,7 +115,7 @@ What is observed, by purpose:
 
 The dashboard and its panels are provisioned from [`pipeline-health.json`](../../infra/grafana/provisioning/dashboards/eventtype/pipeline-health.json); the custom counters it reads (`dlq_records`, `image_retryable_failures`, `minio_uploads`/`minio_upload_nanos`) are registered in the Flink job. Those two are the source of truth for the exact metric set and panel layout.
 
-**Alerting:** Grafana-managed rules in [`infra/grafana/provisioning/alerting/`](../../infra/grafana/provisioning/alerting/) email on three Flink-health basics — a scrape target down, no job in RUNNING state, and restart-looping — via the SMTP relay in `.env`. Checkpoint-failure, lag/backpressure, and DLQ alerting are out of scope (dashboard-only). [`scripts/alert-test.sh`](../../scripts/alert-test.sh) drives a real outage to verify the target-down rule fires.
+**Alerting:** Grafana-managed rules in [`infra/grafana/provisioning/alerting/`](../../infra/grafana/provisioning/alerting/) email on four Flink-health basics — a scrape target down, no job in RUNNING state, restart-looping, and a Kafka backlog that is not draining — via the SMTP relay in `.env`. Checkpoint-failure, backpressure, and DLQ alerting are out of scope (dashboard-only). [`scripts/alert-test.sh`](../../scripts/alert-test.sh) drives a real outage to verify the target-down rule fires.
 
 ## Out of scope
 
@@ -137,8 +137,10 @@ The stack runs single-node to fit the resource constraints of a local/demo deplo
 
 ## Building blocks
 
-A pointer map — open the source for detail. The **job** (checkpoints, windows, sources, sinks,
-async I/O) is all in `StreamingJob`; the **cluster** (slots, parallelism, services) is in Docker Compose.
+A pointer map — open the source for detail. The **job wiring** (sources, windows, sinks, async I/O)
+is in `StreamingJob`; the checkpoint/restart config and the DLQ Kafka sink are shared with the
+userKeys pipeline via `pipeline.common`; the **cluster** (slots, parallelism, services) is in Docker
+Compose.
 
 Tasks aren't declared anywhere — Flink's JobManager derives them at submit time:
 **operators** (`StreamingJob`) **× parallelism** (e.g. `-p 8`, set in compose) **→ subtasks → scheduled into slots**
@@ -149,7 +151,8 @@ volume, so no RocksDB or `config.yaml` tuning is in the repo.
 
 | Building block | Source |
 | --- | --- |
-| Job, checkpoints, restart, Kafka source, watermarks, windows, async I/O, DLQ sink | [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java) |
+| Job wiring, Kafka source, watermarks, windows, async I/O | [`StreamingJob.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java) |
+| Checkpoint/restart config, DLQ sink (shared by both pipelines) | [`JobEnvironment.java`](../../flink/src/main/java/com/webcharm/pipeline/common/config/JobEnvironment.java), [`DlqSink.java`](../../flink/src/main/java/com/webcharm/pipeline/common/dlq/DlqSink.java) |
 | Postgres sinks (bounded JDBC) | [`functions/`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/functions/) + [`sinks/`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/sinks/) |
 | MinIO async enrichment operator | [`MinioAsyncImageFunction.java`](../../flink/src/main/java/com/webcharm/pipeline/eventtype/functions/MinioAsyncImageFunction.java) |
 | Fat JAR build / image | [`flink/pom.xml`](../../flink/pom.xml), [`flink/Dockerfile`](../../flink/Dockerfile) |

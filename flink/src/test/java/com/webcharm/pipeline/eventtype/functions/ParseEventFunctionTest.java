@@ -46,7 +46,6 @@ class ParseEventFunctionTest {
     }
   }
 
-  /** A well-formed DATA event is parsed into a ProcessedEvent with all fields correctly mapped. */
   @Test
   void map_dataEvent_parsesAllFields() throws Exception {
     TestableFn fn = new TestableFn();
@@ -71,7 +70,6 @@ class ParseEventFunctionTest {
     assertNull(result.getImageUrl());
   }
 
-  /** An IMAGE event containing only imageUrl is parsed correctly; imageObjectKey is null because it was absent from the input. */
   @Test
   void map_imageEventWithUrl_parsesImageUrl() throws Exception {
     TestableFn fn = new TestableFn();
@@ -93,7 +91,7 @@ class ParseEventFunctionTest {
     assertNull(result.getImageObjectKey());
   }
 
-  /** Optional fields absent from the JSON default to "unknown" source, "image/jpeg" content type, and null payload. */
+  /** Optional fields absent from the JSON default to "unknown" source and null payload. */
   @Test
   void map_missingOptionalFields_usesDefaults() throws Exception {
     TestableFn fn = new TestableFn();
@@ -112,7 +110,6 @@ class ParseEventFunctionTest {
     assertNull(result.getPayload());
   }
 
-  /** Unrecognised JSON fields do not cause a failure; the event is parsed normally and no DLQ record is emitted. */
   @Test
   void map_unknownFields_ignored() throws Exception {
     TestableFn fn = new TestableFn();
@@ -129,7 +126,6 @@ class ParseEventFunctionTest {
     assertTrue(fn.dlqCapture.isEmpty());
   }
 
-  /** A non-UUID id string causes a DlqRecord to be emitted to the side output; the main output receives nothing. */
   @Test
   void processElement_malformedUuid_emitsToDlqNotMain() throws Exception {
     TestableFn fn = new TestableFn();
@@ -143,7 +139,6 @@ class ParseEventFunctionTest {
     assertNotNull(fn.dlqCapture.get(0).failedAt());
   }
 
-  /** An unparseable eventTime string causes a DlqRecord to be emitted to the side output; the main output receives nothing. */
   @Test
   void processElement_malformedTimestamp_emitsToDlqNotMain() throws Exception {
     TestableFn fn = new TestableFn();
@@ -155,7 +150,6 @@ class ParseEventFunctionTest {
     assertTrue(fn.mainCapture.isEmpty());
   }
 
-  /** A completely invalid JSON string causes a DlqRecord to be emitted to the side output; the main output receives nothing. */
   @Test
   void processElement_invalidJson_emitsToDlqNotMain() throws Exception {
     TestableFn fn = new TestableFn();
@@ -165,7 +159,6 @@ class ParseEventFunctionTest {
     assertTrue(fn.mainCapture.isEmpty());
   }
 
-  /** An IMAGE event with imageObjectKey is parsed correctly; imageUrl is null because it was absent from the input. */
   @Test
   void map_imageEventWithObjectKey_parsesObjectKey() throws Exception {
     TestableFn fn = new TestableFn();
@@ -188,7 +181,6 @@ class ParseEventFunctionTest {
     assertNull(result.getImageUrl());
   }
 
-  /** An IMAGE event with neither imageUrl nor imageObjectKey is routed to the DLQ. */
   @Test
   void processElement_imageEventNeitherUrlNorObjectKey_routesToDlq() throws Exception {
     TestableFn fn = new TestableFn();
@@ -205,7 +197,6 @@ class ParseEventFunctionTest {
     assertNotNull(fn.dlqCapture.get(0).error());
   }
 
-  /** An eventType that is not DATA or IMAGE is routed to the DLQ and never reaches the main output. */
   @Test
   void processElement_invalidEventType_routesToDlq() throws Exception {
     TestableFn fn = new TestableFn();
@@ -223,7 +214,6 @@ class ParseEventFunctionTest {
     assertEquals(DlqStage.PARSE.name(), fn.dlqCapture.get(0).stage());
   }
 
-  /** A missing eventType field is treated as unexpected and routed to the DLQ. */
   @Test
   void processElement_missingEventType_routesToDlq() throws Exception {
     TestableFn fn = new TestableFn();

@@ -3,6 +3,11 @@ package com.webcharm.pipeline.eventtype.types;
 import java.io.Serializable;
 import java.time.Instant;
 
+/**
+ * One window's event count for an eventType: the row written to event_type_counts_agg. A mutable
+ * Flink POJO (no-arg constructor plus getters/setters) so Flink uses its POJO serializer for
+ * checkpoint and network transport.
+ */
 public class EventTypeCountAgg implements Serializable {
   private Instant windowStart;
   private Instant windowEnd;

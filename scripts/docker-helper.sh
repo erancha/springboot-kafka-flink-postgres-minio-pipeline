@@ -53,9 +53,9 @@ compose_project() {
   basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'
 }
 
-# Starts the stack, or only the named services. Rebuilding a flink-job-* submitter recycles the
-# JobManager/TaskManager: the JobManager keeps the prior submission running across a plain recreate,
-# so the cluster pair must be recreated to clear the old job before the rebuilt one is resubmitted.
+# Rebuilding a flink-job-* submitter recycles the JobManager/TaskManager: the JobManager keeps the
+# prior submission running across a plain recreate, so the cluster pair must be recreated to clear
+# the old job before the rebuilt one is resubmitted.
 do_up() {
   local build=false recreate=false
   local -a targets=()
@@ -88,9 +88,6 @@ do_up() {
   compose ps
 }
 
-# Stops the whole stack. Default removes this stack's volumes (down -v); --keep-volumes preserves
-# them. --prune additionally clears this project's dangling images and/or volumes, label-scoped to
-# the compose project so other running stacks are never touched.
 do_stop() {
   local keep=false prune=""
   while [[ $# -gt 0 ]]; do
@@ -134,7 +131,7 @@ do_stop() {
 # and worse) and --grep (custom regex) only choose what to match, and the stream follows live by
 # default. --sort time is the sole switch to a finite snapshot — it must stop following, since an
 # unbounded stream cannot be sorted. --since bounds the window either way. Remaining args after the
-# flags name a single service.
+# flags narrow to those services.
 do_logs() {
   local pattern="" follow=true sort_by="" order="desc"
   local -a since=()

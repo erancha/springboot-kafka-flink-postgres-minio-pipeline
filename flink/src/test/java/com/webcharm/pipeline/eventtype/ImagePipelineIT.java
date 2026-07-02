@@ -33,8 +33,9 @@ class ImagePipelineIT {
     StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
     env.setParallelism(1);
 
-    // imageObjectKey already set => MinioAsyncImageFunction passes through as success
-    // with no network I/O, so this exercises the real async operator + split without Docker.
+    // imageObjectKey already set => MinioAsyncImageFunction passes through as success; its
+    // best-effort size stat fails without MinIO and is swallowed, so the real async operator
+    // + split run without Docker.
     DataStream<ProcessedEvent> source = env.fromData(
         img(null, "images/2026-05-17/a.jpg"),
         img(null, "images/2026-05-17/b.jpg"));

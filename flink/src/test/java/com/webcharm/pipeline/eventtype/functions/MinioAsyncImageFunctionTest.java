@@ -122,7 +122,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * The object is absent (statObject reports NoSuchKey) and the URL returns 200, so the image
-   * is fetched and uploaded to MinIO. Expected success with a putObject call as the happy path.
+   * is fetched and uploaded to MinIO — the happy path.
    */
   @Test
   void objectAbsent_fetchesAndUploads_success() throws Exception {
@@ -139,7 +139,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A 4xx is a client error that retrying cannot fix, so it is classified permanent and routed
-   * to the DLQ stamped with stage IMAGE_ENRICH. Expected not success and not retryable.
+   * to the DLQ stamped with stage IMAGE_ENRICH.
    */
   @Test
   void response4xx_permanentFailure() throws Exception {
@@ -159,7 +159,7 @@ class MinioAsyncImageFunctionTest {
   /**
    * The HTTP client follows no redirects as an SSRF guard, so a 3xx is handled like any other
    * non-2xx: permanent and never retried, so an allowlisted host cannot redirect the socket to
-   * an internal endpoint. Expected not success and not retryable.
+   * an internal endpoint.
    */
   @Test
   void response3xxRedirect_permanentFailure_ssrfGuard() throws Exception {
@@ -176,7 +176,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A 5xx is a transient server-side error that may succeed later, so it is classified retryable
-   * and the framework async retry re-attempts it before it can reach the DLQ. Expected retryable.
+   * and the framework async retry re-attempts it before it can reach the DLQ.
    */
   @Test
   void response5xx_retryableFailure() throws Exception {
@@ -193,7 +193,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A transport failure (connection reset) during the fetch is transient and may succeed on a
-   * retry, so it is classified retryable rather than permanent. Expected retryable.
+   * retry, so it is classified retryable rather than permanent.
    */
   @Test
   void ioExceptionFromFetch_retryableFailure() throws Exception {
@@ -210,7 +210,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A body exceeding the 10 MB cap will never fit no matter how many times it is retried, so it
-   * is classified permanent and fails fast. Expected not success and not retryable.
+   * is classified permanent and fails fast.
    */
   @Test
   void responseOversized_permanentFailure() throws Exception {
@@ -228,7 +228,7 @@ class MinioAsyncImageFunctionTest {
   /**
    * A 200 whose Content-Type is not image/* (e.g. an HTML error page returned by an allowlisted
    * host) is not an image and retrying cannot make it one, so it is classified permanent and
-   * never uploaded to MinIO. Expected not success, not retryable, and no putObject.
+   * never uploaded to MinIO.
    */
   @Test
   void response200_nonImageContentType_permanentFailure() throws Exception {
@@ -248,7 +248,7 @@ class MinioAsyncImageFunctionTest {
   /**
    * A 200 with no Content-Type header is unverifiable as an image; storing it under a fabricated
    * image content-type is exactly the misleading behavior the guard prevents, so an absent
-   * Content-Type is permanent. Expected not success, not retryable, and no putObject.
+   * Content-Type is permanent.
    */
   @Test
   void response200_missingContentType_permanentFailure() throws Exception {
@@ -266,7 +266,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * An IMAGE event carrying neither an imageUrl nor an imageObjectKey can never be enriched, so
-   * it fails permanently without any fetch. Expected not success and not retryable.
+   * it fails permanently without any fetch.
    */
   @Test
   void noUrlNoKey_permanentFailure() throws Exception {
@@ -282,8 +282,6 @@ class MinioAsyncImageFunctionTest {
   /**
    * The blocking response-body read must run on the function's bounded executor, not on the
    * HttpClient's internal completion thread, so a slow body cannot starve the HttpClient's pool.
-   * Expected success with the body observed on an owned-exec thread; fails if it ran on the
-   * foreign completion thread.
    */
   @Test
   @SuppressWarnings("unchecked")
@@ -335,7 +333,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A retryable failure (5xx) increments the Prometheus retryable-failure counter exactly once,
-   * so retry pressure on the IMAGE branch is observable. Expected retryable and counter is 1.
+   * so retry pressure on the IMAGE branch is observable.
    */
   @Test
   void retryableFailure_incrementsRetryableCounter() throws Exception {
@@ -371,7 +369,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A successful enrichment never touches the retryable-failure counter, so the metric reflects
-   * only genuine retry pressure. Expected counter is 0.
+   * only genuine retry pressure.
    */
   @Test
   void success_doesNotIncrementRetryableCounter() throws Exception {
@@ -389,7 +387,7 @@ class MinioAsyncImageFunctionTest {
   /**
    * A successful fetch-and-upload meters exactly one MinIO upload and records a positive
    * putObject duration, so DATA-vs-IMAGE throughput and average upload latency are observable
-   * in Prometheus. Expected success, upload count 1, and upload nanos greater than 0.
+   * in Prometheus.
    */
   @Test
   void successfulUpload_isMeteredOnceWithPositiveDuration() throws Exception {
@@ -410,7 +408,6 @@ class MinioAsyncImageFunctionTest {
   /**
    * An idempotency hit (the object already exists) skips putObject entirely, so it is not
    * counted as an upload and cannot inflate throughput or skew average upload latency.
-   * Expected success with upload count 0.
    */
   @Test
   void idempotencyHit_isNotMeteredAsUpload() throws Exception {
@@ -427,7 +424,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A permanent failure (4xx) never reaches putObject, so it is not counted as an upload and
-   * the upload metrics reflect only genuine writes. Expected not success with upload count 0.
+   * the upload metrics reflect only genuine writes.
    */
   @Test
   void permanentFailure_isNotMeteredAsUpload() throws Exception {
@@ -479,7 +476,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A passthrough event (backend already uploaded the bytes) has no body for Flink to measure, so
-   * the size is read from the stored object's stat. Expected success carrying that stat size.
+   * the size is read from the stored object's stat.
    */
   @Test
   void passthrough_capturesStoredObjectSizeViaStat() throws Exception {
@@ -514,7 +511,7 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * The object key extension is derived from the URL path, so a .png URL produces a key ending
-   * in .png (extension and content-type routing). Expected success with a .png key suffix.
+   * in .png (extension and content-type routing).
    */
   @Test
   void pngUrl_keySuffixedPng() throws Exception {

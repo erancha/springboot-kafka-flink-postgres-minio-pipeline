@@ -13,7 +13,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Rejects requests whose Content-Length exceeds MAX_REQUEST_CONTENT_LENGTH with 413. */
+/**
+ * Rejects non-multipart /api requests whose Content-Length exceeds MAX_REQUEST_CONTENT_LENGTH
+ * with 413; multipart bodies are bounded by Spring's multipart limits instead.
+ */
 @Component
 public class RequestSizeLimitFilter extends OncePerRequestFilter {
 

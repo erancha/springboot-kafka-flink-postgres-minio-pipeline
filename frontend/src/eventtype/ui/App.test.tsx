@@ -13,10 +13,9 @@ describe('canSubmit', () => {
     render(<App />);
     const user = userEvent.setup();
 
-    // Switch to IMAGE
     await user.selectOptions(screen.getAllByRole('combobox')[0], 'IMAGE');
 
-    // Clear the default imageUrl value ('https://www.gstatic.com/webp/gallery/1.jpg')
+    // Clear the default imageUrl so neither URL nor file is set
     const urlInput = screen.getByPlaceholderText('https://example.com/image.jpg');
     await user.clear(urlInput);
 
@@ -28,7 +27,7 @@ describe('canSubmit', () => {
     const user = userEvent.setup();
 
     await user.selectOptions(screen.getAllByRole('combobox')[0], 'IMAGE');
-    // Default imageUrl is 'https://www.gstatic.com/webp/gallery/1.jpg' (non-empty), so button is enabled
+    // The default imageUrl is non-empty, so the button stays enabled
     expect(screen.getByRole('button', { name: /send event/i })).not.toBeDisabled();
   });
 });
@@ -98,7 +97,7 @@ describe('submit() error handling', () => {
 
     await user.click(screen.getByRole('button', { name: /send event/i }));
 
-    // App catches the error and calls setResult(e.message), displayed in <pre>
+    // App catches the error into setErrorMessage, shown in the StatusBanner alert
     expect(await screen.findByText(/network error/i)).toBeInTheDocument();
   });
 
@@ -112,7 +111,7 @@ describe('submit() error handling', () => {
 
     await user.click(screen.getByRole('button', { name: /send event/i }));
 
-    // App throws new Error(body) then catches it, calling setResult(e.message)
+    // App throws new Error(body), caught into setErrorMessage and shown in the StatusBanner alert
     expect(await screen.findByText(/internal server error/i)).toBeInTheDocument();
   });
 });

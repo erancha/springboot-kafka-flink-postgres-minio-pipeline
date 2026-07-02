@@ -5,10 +5,7 @@ import com.webcharm.pipeline.eventtype.sinks.PostgresEventTypeCountAggWriter;
 import com.webcharm.pipeline.eventtype.types.DlqStage;
 import com.webcharm.pipeline.eventtype.types.EventTypeCountAgg;
 
-/**
- * Writes EventTypeCountAgg records to Postgres and routes permanent JDBC failures to a DLQ.
- * Mirrors PostgresWriteFunction's fault-handling strategy for the windowed-counts path.
- */
+/** Writes EventTypeCountAgg records to Postgres and routes permanent JDBC failures to a DLQ. */
 public class PostgresCountAggWriteFunction extends AbstractPostgresWriteFunction<EventTypeCountAgg> {
 
   public PostgresCountAggWriteFunction(DlqStage stage) {
