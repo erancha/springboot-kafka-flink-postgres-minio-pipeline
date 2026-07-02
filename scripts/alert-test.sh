@@ -37,8 +37,8 @@ GF_SERVICE="grafana"
 TARGET_RULE="Flink target down"
 RULES_API="api/prometheus/grafana/api/v1/rules"
 
-# 'for: 1m' + 1m rule-eval interval + 15s scrape: worst-case ~2m to firing, ~1m15s to clear.
-FIRE_TIMEOUT=210
+# 'for: 5m' + 1m rule-eval interval + 15s scrape: worst-case ~6m30s to firing, ~1m15s to clear.
+FIRE_TIMEOUT=420
 CLEAR_TIMEOUT=150
 
 # Credential precedence: -u/-p flags, then GRAFANA_USER/GRAFANA_PASS env, then the container's
