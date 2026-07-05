@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml)
 
-[Summary](#summary) · [Overview](#overview) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Testing](#testing) · [Analytics](#analytics)
+[Summary](#summary) · [Overview](#overview) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Testing](#testing) · [Analytics](#analytics) · [License](#license)
 
 ## Summary
 
