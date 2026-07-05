@@ -148,3 +148,7 @@ Post-hoc vs. Flink-pre-aggregated queries, the windowing behavior, and how to ru
 
 - **eventtype** — [ANALYTICS.md](docs/eventtype/ANALYTICS.md).
 - **userKeys** — windowed sums, in the [pipeline flow](docs/userKeys/PIPELINE_FLOW.md).
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).

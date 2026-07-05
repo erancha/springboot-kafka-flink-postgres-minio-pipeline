@@ -8,6 +8,14 @@
   <packaging>pom</packaging>
   <name>pipeline-parent</name>
 
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <!-- Aggregator for the reactor. It only lists modules and fixes their build order; the child
        modules keep their own coordinates and plugin configuration rather than inheriting from here.
        Listing the contract modules first lets a reactor build (mvn -pl backend -am, -pl flink -am) compile
