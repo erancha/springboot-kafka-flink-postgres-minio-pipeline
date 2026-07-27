@@ -5,7 +5,7 @@
 A [docker-compose](scripts/docker-compose.yml)-deployable real-time data pipeline: events flow one
 direction through **Spring Boot → Kafka → Flink → PostgreSQL / MinIO** sinks.
 
-[Summary](#summary) · [Overview](#overview) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Testing](#testing) · [Analytics](#analytics) · [License](#license)
+**Contents:** [Summary](#summary) · [Overview](#overview) · [Architecture](#architecture) · [Getting started](#getting-started) · [Testing](#testing) · [Analytics](#analytics) · [License](#license)
 
 ## Summary
 
@@ -26,7 +26,7 @@ Testcontainers integration suites; the CI badge above gates the backend and Flin
 while the integration and frontend suites are run separately.
 
 The eventtype pipeline's **DATA ingestion path** has been load-tested at **~10K req/s** over a multi-hour run (~250M+ requests, zero failures), with load generation, ingestion, and the processing pipeline as distinct roles across networked machines. Flink drained the resulting Kafka backlog into Postgres at **~12K events/s**.
-See [Load testing](docs/TESTING.md#load-testing--ingestion-vs-drain) for the methodology.
+See [Load testing](docs/testing.md#load-testing--ingestion-vs-drain) for the methodology.
 
 ### Out of scope
 
@@ -34,9 +34,9 @@ This is an exercise project focused on the data path's failure handling, not a p
 
 - **Authentication / authorization** — the ingestion edges (`POST /api/events` + the React UI for eventtype, `POST /api/user-keys` for userKeys) are unauthenticated local testers, not hardened production boundaries: no login, API key, tenant isolation, or rate limiting, with the eventtype SSRF allowlist as the only request-level guard.
 - **Secrets management & transport security** — credentials are supplied via a gitignored `.env`, but there is no Vault / Secrets Manager integration or rotation, and inter-service traffic on the local Docker network is plaintext (no TLS).
-- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/eventtype/PIPELINE_FLOW.md#dlq-operations).
-- **High availability** — no horizontal replication or cluster-level failover anywhere in the stack, so any single loss can mean data loss or downtime. See [Out of scope](docs/eventtype/PIPELINE_FLOW.md#out-of-scope).
-- **Production paging** — basic backend/Flink-health email alerts exist for both pipelines (see [Observability](docs/eventtype/PIPELINE_FLOW.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints or the DLQ.
+- **DLQ operations** — dead-letter records are captured and metered, but not consumed, replayed, or alerted on. See [DLQ operations](docs/eventtype/pipeline-flow.md#dlq-operations).
+- **High availability** — no horizontal replication or cluster-level failover anywhere in the stack, so any single loss can mean data loss or downtime. See [Out of scope](docs/eventtype/pipeline-flow.md#out-of-scope).
+- **Production paging** — basic backend/Flink-health email alerts exist for both pipelines (see [Observability](docs/eventtype/pipeline-flow.md#observability)), but not on-call escalation, Alertmanager-grade silencing/inhibition, or alerting on checkpoints or the DLQ.
 
 ## Overview
 
@@ -72,14 +72,14 @@ Events flow one direction — [Frontend → ] Backend → Kafka → Flink → si
   exactly one runs at a time, selected with `./scripts/start.sh --pipeline <name>`:
   - **eventtype** (default) — consumes the `events` stream and routes by event type
     ([`StreamingJob`](flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java) ·
-    [pipeline flow](docs/eventtype/PIPELINE_FLOW.md)):
+    [pipeline flow](docs/eventtype/pipeline-flow.md)):
     - `IMAGE` events **always** land in MinIO (`images/{date}/{id}.{ext}`) — whether uploaded as a
       file (stored by the backend at ingestion) or supplied as a URL (fetched and **cloned** into
       MinIO by Flink; only the object key is persisted to Postgres, never the source URL).
-      [Why clone rather than reference](docs/eventtype/PIPELINE_FLOW.md#async-image-enrichment): durable
+      [Why clone rather than reference](docs/eventtype/pipeline-flow.md#async-image-enrichment): durable
       and self-contained.
     - `DATA` events are stored in Postgres — written in per-slot
-      [committed batches](docs/eventtype/PIPELINE_FLOW.md#batched-postgres-writes) for throughput, flushed
+      [committed batches](docs/eventtype/pipeline-flow.md#batched-postgres-writes) for throughput, flushed
       every checkpoint so the delivery guarantee is unchanged. An encrypted payload stays encrypted
       end-to-end: Flink passes the envelope through opaquely (it never needs the key) and persists it to
       the `payload` column, where a future consumer holding the key decrypts it with the same shared
@@ -87,7 +87,7 @@ Events flow one direction — [Frontend → ] Backend → Kafka → Flink → si
   - **userKeys** — consumes `{userId, key, value}` events and sums `value` by `(userId, key)` over
     event-time tumbling windows into PostgreSQL, with exactly-once delivery via Flink's XA two-phase
     commit ([`StreamingJob`](flink/src/main/java/com/webcharm/pipeline/userkeys/StreamingJob.java) ·
-    [pipeline flow](docs/userKeys/PIPELINE_FLOW.md)).
+    [pipeline flow](docs/userkeys/pipeline-flow.md)).
 
 ## Architecture
 
@@ -103,12 +103,13 @@ The pipeline services and their URLs are described in the [Overview](#overview);
 | Grafana | per-pipeline analytics + Flink pipeline-health dashboards, plus email alert rules on backend/Flink health (both pipelines) | [http://localhost:3031](http://localhost:3031/dashboards) (`admin` / `admin`) |
 | Prometheus | scrapes Flink metrics for operability | http://localhost:9090 |
 
-## Getting Started
+## Getting started
 
 Requires Docker Desktop and Docker Compose v2. Run the Bash scripts from any Linux shell (WSL included):
 
 ```bash
 find scripts -name '*.sh' -exec chmod +x {} +   # if not already executable
+cp .env.example .env                            # then fill in the blank keys — each is documented inline
 ./scripts/start.sh
 ```
 
@@ -123,34 +124,33 @@ The stack runs one pipeline at a time; select it with `--pipeline` (default `eve
 ./scripts/start.sh --pipeline userkeys     # {userId, key, value} → windowed sums → Postgres
 ```
 
-Switching pipelines reuses the same images — no rebuild — but needs `--restart` so the prior
-pipeline's job is cleared: `./scripts/start.sh --restart --pipeline userkeys`. After editing backend
-or Flink source, add `--rebuild` to recompile the jar into the image, e.g:
-
-```bash
-./scripts/start.sh --pipeline userkeys --rebuild
-```
+Switching pipelines needs `--restart`, and source edits need `--rebuild` —
+`./scripts/start.sh --help` covers the mechanics.
 
 Additional commands:
 
 ```bash
 ./scripts/start.sh --help                        # start options; after editing code/env, re-apply with --rebuild <service>
 ./scripts/docker-helper.sh --help                # build images (--build), stop the stack (--stop), or stream logs (--logs)
-./scripts/test.sh --help                         # run tests; see docs/TESTING.md for suite details
+./scripts/test.sh --help                         # run tests; see docs/testing.md for suite details
 ./scripts/<pipeline>/send-event.sh --help        # send event(s)
 ```
 
 ## Testing
 
-Unit, component, and integration test suites and how to run them are documented in [TESTING.md](docs/TESTING.md).
+Unit, component, and integration test suites and how to run them are documented in [testing.md](docs/testing.md).
 
 ## Analytics
 
 Post-hoc vs. Flink-pre-aggregated queries, the windowing behavior, and how to run them (CLI and Grafana), documented per pipeline:
 
-- **eventtype** — [ANALYTICS.md](docs/eventtype/ANALYTICS.md).
-- **userKeys** — windowed sums, in the [pipeline flow](docs/userKeys/PIPELINE_FLOW.md).
+- **eventtype** — [analytics.md](docs/eventtype/analytics.md).
+- **userKeys** — windowed sums, in the [pipeline flow](docs/userkeys/pipeline-flow.md).
 
 ## License
 
 Released under the MIT License. See [LICENSE](LICENSE).
+
+---
+
+More projects by the author: [github.com/erancha](https://github.com/erancha)

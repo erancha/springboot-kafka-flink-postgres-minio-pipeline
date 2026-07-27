@@ -80,4 +80,4 @@ Testcontainers Postgres started with `max_prepared_transactions` enabled. The si
 the job; a clean run landing exactly the expected rows is the suite's evidence that each window
 committed once. The delivery mechanics (XA two-phase commit, `transactionPerConnection`,
 `max_prepared_transactions` sizing) are described in the
-[userKeys pipeline flow](userKeys/PIPELINE_FLOW.md#exactly-once-delivery-into-postgres).
+[userKeys pipeline flow](userkeys/pipeline-flow.md#exactly-once-delivery-into-postgres).

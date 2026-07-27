@@ -1,6 +1,8 @@
 **/target/
-.claude/worktrees/
-.claude/settings.local.json
+
+# AI-tooling working files stay local, consistent with the sibling portfolio repos
+.claude/
+CLAUDE.md
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json

@@ -17,7 +17,7 @@ the JDBC write does wait, but only within a strict time bound
 (`socketTimeout`/`connectTimeout`/query timeout) kept under the checkpoint budget.
 Either way a slow/bad image or a slow/hung DBMS cannot hold up a checkpoint. (Scope: the
 event-processing path; the windowed branches are covered in
-[`ANALYTICS.md`](ANALYTICS.md).)
+[`analytics.md`](analytics.md).)
 
 ```mermaid
 sequenceDiagram
