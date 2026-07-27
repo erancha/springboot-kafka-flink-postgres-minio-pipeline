@@ -1,4 +1,4 @@
-# Flink Pipeline Flow
+# eventtype pipeline flow
 
 Everything after Kafka is the Flink job's responsibility: delivery guarantee,
 checkpointing, async image enrichment, the bounded JDBC path, retries, and

@@ -67,10 +67,10 @@ Runs against the live stack from `start.sh`: it induces a real outage, polls unt
 
 ### eventtype — load-test scope
 
-The JMeter plan (`jmeter/eventtype/backend-load.jmx`) drives only `DATA` events, so the headline
-ingestion and drain figures cover the **DATA → Postgres** path. The IMAGE path — URL fetch, MinIO
-upload, async enrichment — is exercised by the integration suites but **not** load-tested, so its
-throughput under sustained traffic is uncharacterized. Load it with `--pipeline eventtype`.
+The JMeter plan (`jmeter/eventtype/backend-load.jmx`), selected with `--pipeline eventtype`, drives
+only `DATA` events, so the headline ingestion and drain figures cover the **DATA → Postgres** path.
+The IMAGE path — URL fetch, MinIO upload, async enrichment — is exercised by the integration suites
+but **not** load-tested, so its throughput under sustained traffic is uncharacterized.
 
 ### userKeys — exactly-once under test
 

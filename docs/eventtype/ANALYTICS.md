@@ -29,10 +29,9 @@ Via CLI:
 ./scripts/sql-helper.sh -f infra/postgres/eventtype/analytics.sql
 ```
 
-Via Grafana dashboard:
-Access [http://localhost:3031](http://localhost:3031/d/processed-events/eventtype-stored-aggregates-analytics?orgId=1&refresh=10s) (user: `admin`, pass: `admin`), then:
-
-- Dashboards → Browse → **eventtype Stored Aggregates Analytics**
+Via Grafana: open the
+[eventtype Stored Aggregates Analytics dashboard](http://localhost:3031/d/processed-events/eventtype-stored-aggregates-analytics?orgId=1&refresh=10s)
+(user: `admin`, pass: `admin`).
 
 The CLI runs every query in `analytics.sql`; the Grafana dashboard renders only the Flink
 pre-aggregated tables (`event_type_counts_agg`, `image_size_buckets_agg`) as live panels.

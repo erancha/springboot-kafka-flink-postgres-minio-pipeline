@@ -5,6 +5,8 @@ window, the sum of `value` for each `(userId, key)` pair in PostgreSQL. Delivery
 exactly-once through Flink's own two-phase commit over XA, so each window result is written once
 without relying on idempotent upserts.
 
+**Contents:** [Data flow](#data-flow) · [Ingestion](#ingestion-backend) · [Stream processing](#stream-processing-flink) · [Exactly-once delivery](#exactly-once-delivery-into-postgres) · [Storage](#storage) · [Error surface](#error-surface) · [Observability](#observability) · [Running it](#running-it)
+
 ## Data flow
 
 ```mermaid

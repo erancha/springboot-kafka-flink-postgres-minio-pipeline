@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml)
 
+A [docker-compose](scripts/docker-compose.yml)-deployable real-time data pipeline: events flow one
+direction through **Spring Boot → Kafka → Flink → PostgreSQL / MinIO** sinks.
+
 [Summary](#summary) · [Overview](#overview) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Testing](#testing) · [Analytics](#analytics) · [License](#license)
 
 ## Summary
@@ -22,7 +25,7 @@ Both the data-path handling and the ingestion gate are backed by 100+ tests, inc
 Testcontainers integration suites; the CI badge above gates the backend and Flink unit tests only,
 while the integration and frontend suites are run separately.
 
-The eventtype pipeline's **DATA ingestion path** has been load-tested at **~10K req/s** over a multi-hour run (~250M+ requests, zero failures) — with load generation, ingestion, and the processing pipeline as distinct roles across networked machines — and Flink draining the resulting Kafka backlog into Postgres at **~12K events/s**.
+The eventtype pipeline's **DATA ingestion path** has been load-tested at **~10K req/s** over a multi-hour run (~250M+ requests, zero failures), with load generation, ingestion, and the processing pipeline as distinct roles across networked machines. Flink drained the resulting Kafka backlog into Postgres at **~12K events/s**.
 See [Load testing](docs/TESTING.md#load-testing--ingestion-vs-drain) for the methodology.
 
 ### Out of scope
@@ -37,8 +40,7 @@ This is an exercise project focused on the data path's failure handling, not a p
 
 ## Overview
 
-This project is a [docker-compose](scripts/docker-compose.yml) deployable real-time data
-pipeline. Events flow one direction — [Frontend → ] Backend → Kafka → Flink → sinks:
+Events flow one direction — [Frontend → ] Backend → Kafka → Flink → sinks:
 
 - [**Frontend**] (optional) — minimal event tester:
   - **eventtype** (http://localhost:3030) — React UI; submits `IMAGE` / `DATA` events.
@@ -65,8 +67,8 @@ pipeline. Events flow one direction — [Frontend → ] Backend → Kafka → Fl
     parallelism.
   - **userKeys** — topics `user-keys` (main) + `user-keys-dlq` (dead-letter); keyed by `(userId, key)` to co-locate an aggregation
     key's events.
-- **Flink** (http://localhost:8081, disabled by default) — the stream processor; everything after
-  Kafka is its responsibility. It hosts two independent pipelines, one `StreamingJob` each, and
+- **Flink** — the stream processor (UI at http://localhost:8081, port not exposed by default);
+  everything after Kafka is its responsibility. It hosts two independent pipelines, one `StreamingJob` each, and
   exactly one runs at a time, selected with `./scripts/start.sh --pipeline <name>`:
   - **eventtype** (default) — consumes the `events` stream and routes by event type
     ([`StreamingJob`](flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java) ·
@@ -110,7 +112,7 @@ find scripts -name '*.sh' -exec chmod +x {} +   # if not already executable
 ./scripts/start.sh
 ```
 
-Then open the [UI tester](#overview) and send events.
+Then open the eventtype UI tester at http://localhost:3030 and send events.
 
 ### Choosing a pipeline
 
