@@ -18,7 +18,7 @@ public class EnrichSplitFunction extends ProcessFunction<EnrichResult, Processed
 
   /** Side-output tag for image enrichment failures, routed to the DLQ. */
   public static final OutputTag<DlqRecord> UPLOAD_ERROR_TAG =
-      new OutputTag<DlqRecord>("minio-upload-error") {};
+      new OutputTag<DlqRecord>("object-store-upload-error") {};
 
   /** Side-output tag carrying one size bucket per successfully stored image of known size. */
   public static final OutputTag<ImageSizeBucket> IMAGE_SIZE_BUCKET_TAG =

@@ -30,7 +30,7 @@ Integration suites require Docker (Testcontainers pulls images on first run); ev
 One harness serves both pipelines; `jmeter-helper.sh --pipeline <name>` selects the plan. Split the
 work across three roles, ideally three separate machines:
 
-- **A — Data pipeline:** the Docker stack (Kafka → Flink → Postgres/MinIO).
+- **A — Data pipeline:** the Docker stack (Kafka → Flink → Postgres/RustFS).
 - **B — Backend:** the Spring Boot ingestion service plus its own Prometheus + Grafana, pointed at A's broker across the network.
 - **C — JMeter:** the load generator, flooding B with HTTP events.
 
@@ -69,7 +69,7 @@ Runs against the live stack from `start.sh`: it induces a real outage, polls unt
 
 The JMeter plan (`jmeter/eventtype/backend-load.jmx`), selected with `--pipeline eventtype`, drives
 only `DATA` events, so the headline ingestion and drain figures cover the **DATA → Postgres** path.
-The IMAGE path — URL fetch, MinIO upload, async enrichment — is exercised by the integration suites
+The IMAGE path — URL fetch, object-store upload, async enrichment — is exercised by the integration suites
 but **not** load-tested, so its throughput under sustained traffic is uncharacterized.
 
 ### userKeys — exactly-once under test

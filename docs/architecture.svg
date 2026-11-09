@@ -44,7 +44,7 @@
   <rect x="246" y="60" width="185" height="78" class="ingestion" rx="5"/>
   <text x="339" y="82" class="box-title" text-anchor="middle">Backend <tspan style="font-size: 9.5px;">(Java Spring Boot)</tspan></text>
   <text x="339" y="101" class="resp" text-anchor="middle">validate · publish events</text>
-  <text x="339" y="115" class="resp" text-anchor="middle">upload files → MinIO</text>
+  <text x="339" y="115" class="resp" text-anchor="middle">upload files → RustFS</text>
   <text x="339" y="131" class="cfg" text-anchor="middle">Port · env:BACKEND_PORT</text>
 
   <rect x="522" y="60" width="205" height="78" class="broker" rx="5"/>
@@ -84,7 +84,7 @@
   <!-- eventtype bullets (left half) -->
   <text x="272" y="273" class="step" style="font-size: 9.5px;">① consume → parse → watermarks</text>
   <text x="272" y="290" class="step" style="font-size: 9.5px;">② DATA → Postgres <tspan class="retry" style="font-size: 8.5px;">[JDBC ↻]</tspan></text>
-  <text x="272" y="307" class="step" style="font-size: 9.5px;">③ IMAGE → MinIO (URL: fetch+clone)</text>
+  <text x="272" y="307" class="step" style="font-size: 9.5px;">③ IMAGE → RustFS (URL: fetch+clone)</text>
   <text x="288" y="320" class="retry" style="font-size: 8.5px;">→ key → Postgres [async ↻]</text>
   <text x="272" y="337" class="step" style="font-size: 9.5px;">④ key by type → window → counts</text>
   <text x="272" y="354" class="step" style="font-size: 9.5px;">⑤ image sizes → window → histogram</text>
@@ -110,11 +110,11 @@
 
   <!-- ===================== STORAGE / ANALYTICS ROW ===================== -->
   <rect x="32" y="465" width="180" height="115" class="sink" rx="5"/>
-  <text x="122" y="488" class="box-title" text-anchor="middle">MinIO <tspan class="mode">[S3]</tspan></text>
+  <text x="122" y="488" class="box-title" text-anchor="middle">RustFS <tspan class="mode">[S3]</tspan></text>
   <text x="122" y="510" class="resp" text-anchor="middle">store image objects</text>
   <text x="122" y="525" class="resp" text-anchor="middle">(all - uploaded and URLs)</text>
-  <text x="122" y="543" class="cfg" text-anchor="middle">ports · env:MINIO_*_EXPOSED</text>
-  <text x="122" y="563" class="step" text-anchor="middle">bucket · env:MINIO_BUCKET</text>
+  <text x="122" y="543" class="cfg" text-anchor="middle">ports · env:OBJECT_STORE_*_EXPOSED</text>
+  <text x="122" y="563" class="step" text-anchor="middle">bucket · env:OBJECT_STORE_BUCKET</text>
 
   <rect x="250" y="465" width="255" height="115" class="sink" rx="5"/>
   <text x="377" y="486" class="box-title" text-anchor="middle">PostgreSQL</text>
@@ -144,10 +144,10 @@
   <!-- StreamingJob → Kafka : dead-letter (async) -->
   <path d="M 680 215 L 658 140" class="async" marker-end="url(#ah)"/>
   <text x="670" y="162" class="alabel" style="fill: #c0392b;">dead-letter</text>
-  <!-- Spring → MinIO : file upload (sync), routed around left edge -->
+  <!-- Spring → RustFS : file upload (sync), routed around left edge -->
   <path d="M 270 138 L 270 158 L 12 158 L 12 523 L 30 523" class="sync" marker-end="url(#ah)"/>
   <text x="30" y="154" class="alabel">file upload (sync)</text>
-  <!-- StreamingJob → MinIO : async I/O + retry -->
+  <!-- StreamingJob → RustFS : async I/O + retry -->
   <path d="M 300 405 L 165 463" class="async" marker-end="url(#ah)"/>
   <text x="225" y="445" class="alabel">image upload</text>
   <!-- StreamingJob → Postgres : sync JDBC + retry -->

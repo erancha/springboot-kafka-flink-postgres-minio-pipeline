@@ -12,32 +12,32 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import org.junit.jupiter.api.Test;
 
-/** Verifies the startup pre-flight checks fail fast on a missing bucket, a failed MinIO call, or a missing Postgres column. */
+/** Verifies the startup pre-flight checks fail fast on a missing bucket, a failed object-store call, or a missing Postgres column. */
 class PreflightChecksTest {
 
   @Test
-  void minioBucketPresent_passes() throws Exception {
+  void objectStoreBucketPresent_passes() throws Exception {
     MinioClient client = mock(MinioClient.class);
     when(client.bucketExists(any())).thenReturn(true);
-    assertDoesNotThrow(() -> PreflightChecks.verifyMinioBucket(client, "images"));
+    assertDoesNotThrow(() -> PreflightChecks.verifyObjectStoreBucket(client, "images"));
   }
 
   @Test
-  void minioBucketMissing_throws() throws Exception {
+  void objectStoreBucketMissing_throws() throws Exception {
     MinioClient client = mock(MinioClient.class);
     when(client.bucketExists(any())).thenReturn(false);
     IllegalStateException ex = assertThrows(IllegalStateException.class,
-        () -> PreflightChecks.verifyMinioBucket(client, "images"));
+        () -> PreflightChecks.verifyObjectStoreBucket(client, "images"));
     assertTrue(ex.getMessage().contains("images"));
   }
 
   @Test
-  void minioCallFails_throwsWrapped() throws Exception {
+  void objectStoreCallFails_throwsWrapped() throws Exception {
     MinioClient client = mock(MinioClient.class);
     when(client.bucketExists(any())).thenThrow(new RuntimeException("connection refused"));
     IllegalStateException ex = assertThrows(IllegalStateException.class,
-        () -> PreflightChecks.verifyMinioBucket(client, "images"));
-    assertTrue(ex.getMessage().contains("MinIO"));
+        () -> PreflightChecks.verifyObjectStoreBucket(client, "images"));
+    assertTrue(ex.getMessage().contains("object store"));
   }
 
   @Test

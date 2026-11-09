@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Compare image counts in MinIO vs PostgreSQL
+# Compare image counts in the object store vs PostgreSQL
 
 set -euo pipefail
 
@@ -11,9 +11,9 @@ source "$SCRIPT_DIR/../common.sh"
 echo "=== Image Count Comparison ==="
 echo
 
-echo "Images in MinIO bucket 'images':"
-MINIO_COUNT=$(compose exec -T minio mc ls --recursive local/images | wc -l)
-echo "  $MINIO_COUNT objects"
+echo "Images in the object-store bucket:"
+OBJECT_STORE_COUNT=$(s3_cli 'aws s3 ls --recursive "s3://$OBJECT_STORE_BUCKET/"' | wc -l)
+echo "  $OBJECT_STORE_COUNT objects"
 echo
 
 echo "Image records in PostgreSQL (processed_events):"
@@ -27,11 +27,11 @@ echo "  $FLINK_COUNT events (summed across all 5-minute windows)"
 echo
 
 echo "Comparison:"
-if [ "$MINIO_COUNT" -eq "$POSTGRES_COUNT" ]; then
-  echo "  ✓ MinIO vs PostgreSQL: Counts match!"
+if [ "$OBJECT_STORE_COUNT" -eq "$POSTGRES_COUNT" ]; then
+  echo "  ✓ Object store vs PostgreSQL: Counts match!"
 else
-  DIFF=$((MINIO_COUNT - POSTGRES_COUNT))
-  echo "  ✗ MinIO vs PostgreSQL: Mismatch of $DIFF" | awk '{if ($NF < 0) gsub(/of/, "of -"); print}'
+  DIFF=$((OBJECT_STORE_COUNT - POSTGRES_COUNT))
+  echo "  ✗ Object store vs PostgreSQL: Mismatch of $DIFF" | awk '{if ($NF < 0) gsub(/of/, "of -"); print}'
 fi
 
 echo "  Flink pre-aggregated count: $FLINK_COUNT events"

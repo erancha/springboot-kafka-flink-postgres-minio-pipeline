@@ -12,7 +12,7 @@
 #       --advise N       sample docker stats over an N-minute window covering the run,
 #                        then recommend memory/parallelism knob changes from the peaks
 #       --skip-preflight skip the send-event.sh pipeline check; flood the backend
-#                        even when Flink/MinIO downstream is unhealthy (edge case)
+#                        even when Flink/object-store downstream is unhealthy (edge case)
 #   -h, --help
 # Total requests sent = threads x iterations.
 # Examples:
@@ -292,7 +292,7 @@ resolve_jmeter
 
 # Preflight via the pipeline's send-event.sh (a single-shot, end-to-end check),
 # so a run never floods a backend whose downstream is broken. --skip-preflight bypasses
-# this to deliberately load an ingestion path whose downstream (Flink/MinIO) is unhealthy.
+# this to deliberately load an ingestion path whose downstream (Flink/object store) is unhealthy.
 if [[ "$SKIP_PREFLIGHT" == true ]]; then
   echo "→ Preflight skipped (--skip-preflight); loading the backend without a pipeline check."
 elif [[ "$BACKEND_HOST" != localhost && "$BACKEND_HOST" != 127.0.0.1 && "$BACKEND_HOST" != "::1" ]]; then

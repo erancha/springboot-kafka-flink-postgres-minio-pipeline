@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Startup validation of external dependencies. Fails fast with a clear message when MinIO or
+ * Startup validation of external dependencies. Fails fast with a clear message when the object store or
  * Postgres is misconfigured (bad credentials, missing bucket, missing column) so a broken
  * deployment never starts and thrashes the running pipeline.
  */
@@ -25,13 +25,13 @@ public final class PreflightChecks {
    * naming the failing component and cause if any check fails.
    */
   public static void run() {
-    verifyMinioBucket(
+    verifyObjectStoreBucket(
         MinioClient.builder()
-            .endpoint(EnvConfig.env("MINIO_ENDPOINT", "http://minio:9000"))
-            .credentials(EnvConfig.env("MINIO_ACCESS_KEY", "minio"),
-                EnvConfig.env("MINIO_SECRET_KEY", "minio123"))
+            .endpoint(EnvConfig.env("OBJECT_STORE_ENDPOINT", "http://object-store:9000"))
+            .credentials(EnvConfig.env("OBJECT_STORE_ACCESS_KEY", "object-store"),
+                EnvConfig.env("OBJECT_STORE_SECRET_KEY", "object-store123"))
             .build(),
-        EnvConfig.env("MINIO_BUCKET", "images"));
+        EnvConfig.env("OBJECT_STORE_BUCKET", "images"));
 
     String url = EnvConfig.env("POSTGRES_URL", "jdbc:postgresql://postgres:5432/warehouse");
     String user = EnvConfig.env("POSTGRES_USER", "postgres");
@@ -42,23 +42,23 @@ public final class PreflightChecks {
       throw fail("Postgres", e);
     }
 
-    log.info("Pre-flight checks passed: MinIO bucket and Postgres schema are reachable");
+    log.info("Pre-flight checks passed: object-store bucket and Postgres schema are reachable");
   }
 
   /**
    * Verifies the target bucket exists, which also exercises endpoint reachability and
    * credentials. Throws IllegalStateException if the bucket is absent or the call fails.
    */
-  static void verifyMinioBucket(MinioClient client, String bucket) {
+  static void verifyObjectStoreBucket(MinioClient client, String bucket) {
     boolean exists;
     try {
       exists = client.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
     } catch (Exception e) {
-      throw fail("MinIO", e);
+      throw fail("object store", e);
     }
     if (!exists) {
       throw new IllegalStateException(
-          "Pre-flight check failed: MinIO bucket '" + bucket + "' does not exist");
+          "Pre-flight check failed: object-store bucket '" + bucket + "' does not exist");
     }
   }
 

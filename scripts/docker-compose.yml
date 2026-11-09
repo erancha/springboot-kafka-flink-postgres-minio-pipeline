@@ -210,38 +210,60 @@ services:
     depends_on:
       - flink-jobmanager
 
-  # MinIO provides local S3-compatible object storage for IMAGE event outputs. Specific to the
-  # eventtype pipeline; the userKeys pipeline stores no objects, so this starts only under that profile.
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+  # RustFS provides local S3-compatible object storage for IMAGE event outputs; the backend and the
+  # Flink job reach it through the MinIO client library, an S3 client. Specific to the eventtype
+  # pipeline; the userKeys pipeline stores no objects, so this starts only under that profile.
+  object-store:
+    image: rustfs/rustfs:1.0.1
     profiles: ["eventtype"]
     deploy:
       resources:
         limits:
           memory: 512m
-    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    command: /data
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - RUSTFS_ACCESS_KEY=${OBJECT_STORE_ROOT_USER}
+      - RUSTFS_SECRET_KEY=${OBJECT_STORE_ROOT_PASSWORD}
+      - RUSTFS_ADDRESS=:${OBJECT_STORE_PORT}
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_CONSOLE_ADDRESS=:${OBJECT_STORE_CONSOLE_PORT}
     ports:
-      - "${MINIO_PORT_EXPOSED}:${MINIO_PORT}"
-      - "${MINIO_CONSOLE_PORT_EXPOSED}:${MINIO_CONSOLE_PORT}"
+      - "${OBJECT_STORE_PORT_EXPOSED}:${OBJECT_STORE_PORT}"
+      - "${OBJECT_STORE_CONSOLE_PORT_EXPOSED}:${OBJECT_STORE_CONSOLE_PORT}"
     volumes:
-      - minio_data:/data
+      - object_store_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/ready"]
+      test: ["CMD", "curl", "-f", "http://localhost:${OBJECT_STORE_PORT}/health"]
       interval: 10s
       timeout: 5s
       retries: 20
 
-  # MinIO bootstrap job to create the images bucket required by the eventtype pipeline; this is a one-shot init container and is expected to exit successfully.
-  minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+  # One-shot bootstrap for the eventtype pipeline: creates the images bucket and grants anonymous
+  # object reads on it, then exits 0. The AWS CLI is the S3 client; object-store-helper.sh reuses this
+  # service definition for its endpoint and credentials.
+  object-store-init:
+    image: amazon/aws-cli:2.31.0
     profiles: ["eventtype"]
     depends_on:
-      minio:
+      object-store:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c", "mc alias set local http://${MINIO_HOST}:${MINIO_PORT} ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} && mc mb --ignore-existing local/${MINIO_BUCKET} && mc anonymous set download local/${MINIO_BUCKET} || true"]
+    environment:
+      - AWS_ACCESS_KEY_ID=${OBJECT_STORE_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${OBJECT_STORE_ROOT_PASSWORD}
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://${OBJECT_STORE_HOST}:${OBJECT_STORE_PORT}
+      - OBJECT_STORE_BUCKET=${OBJECT_STORE_BUCKET}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        aws s3api head-bucket --bucket "$$OBJECT_STORE_BUCKET" 2>/dev/null \
+          || aws s3api create-bucket --bucket "$$OBJECT_STORE_BUCKET"
+        aws s3api put-bucket-policy --bucket "$$OBJECT_STORE_BUCKET" --policy "{
+          \"Version\": \"2012-10-17\",
+          \"Statement\": [{\"Effect\": \"Allow\", \"Principal\": \"*\",
+                         \"Action\": \"s3:GetObject\",
+                         \"Resource\": \"arn:aws:s3:::$$OBJECT_STORE_BUCKET/*\"}]
+        }"
 
   # Spring Boot API layer that validates UI requests and publishes JSON events to Kafka.
   backend:
@@ -262,11 +284,11 @@ services:
       - KAFKA_TOPIC=${KAFKA_TOPIC}
       - KAFKA_USERKEYS_TOPIC=${KAFKA_USERKEYS_TOPIC}
       - KAFKA_SEND_TIMEOUT_SECONDS
-      - MINIO_HOST_LOCAL=${MINIO_HOST}
-      - MINIO_PORT=${MINIO_PORT}
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-      - MINIO_BUCKET=${MINIO_BUCKET}
+      - OBJECT_STORE_HOST_LOCAL=${OBJECT_STORE_HOST}
+      - OBJECT_STORE_PORT=${OBJECT_STORE_PORT}
+      - OBJECT_STORE_ROOT_USER=${OBJECT_STORE_ROOT_USER}
+      - OBJECT_STORE_ROOT_PASSWORD=${OBJECT_STORE_ROOT_PASSWORD}
+      - OBJECT_STORE_BUCKET=${OBJECT_STORE_BUCKET}
       # SSRF allowlist for URL-based IMAGE events; an empty value denies every imageUrl fetch with 403.
       - IMAGE_URL_ALLOWED_HOSTS=${IMAGE_URL_ALLOWED_HOSTS}
       - MAX_REQUEST_CONTENT_LENGTH=${MAX_REQUEST_CONTENT_LENGTH}
@@ -338,8 +360,8 @@ services:
     depends_on:
       - flink-jobmanager
 
-  # Submitter for the eventtype Kafka->(MinIO/Postgres) pipeline. Started only under the eventtype
-  # profile (one pipeline runs at a time). Unlike minio-init it is not expected to exit immediately,
+  # Submitter for the eventtype Kafka->(store/Postgres) pipeline. Started only under the eventtype
+  # profile (one pipeline runs at a time). Unlike object-store-init it is not expected to exit immediately,
   # and an early exit means job submission/startup failed.
   flink-job-eventtype:
     <<: *flink-image
@@ -356,10 +378,10 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_HOST}:${KAFKA_PORT}
       KAFKA_TOPIC: ${KAFKA_TOPIC}
       KAFKA_DLQ_TOPIC: ${KAFKA_DLQ_TOPIC}
-      MINIO_ENDPOINT: http://${MINIO_HOST}:${MINIO_PORT}
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: ${MINIO_BUCKET}
+      OBJECT_STORE_ENDPOINT: http://${OBJECT_STORE_HOST}:${OBJECT_STORE_PORT}
+      OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ROOT_USER}
+      OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_ROOT_PASSWORD}
+      OBJECT_STORE_BUCKET: ${OBJECT_STORE_BUCKET}
     depends_on:
       flink-jobmanager:
         condition: service_started
@@ -367,7 +389,7 @@ services:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
-      minio-init:
+      object-store-init:
         condition: service_completed_successfully
     # Submit only once the cluster can actually run the job: wait until registered task slots reach
     # the job parallelism, not merely until the JobManager REST answers. Submitting against a
@@ -426,6 +448,6 @@ services:
 volumes:
   kafka_data:
   postgres_data:
-  minio_data:
+  object_store_data:
   grafana_data:
   prometheus_data:

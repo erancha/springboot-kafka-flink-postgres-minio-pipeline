@@ -36,12 +36,12 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Non-blocking image enrichment as a Flink async I/O function: fetches imageUrl via
- * HttpClient.sendAsync and uploads to MinIO on a bounded executor, never blocking the
+ * HttpClient.sendAsync and uploads to the object store on a bounded executor, never blocking the
  * operator task thread. Emits EnrichResult: success, retryable failure, or permanent failure.
  */
-public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, EnrichResult> {
+public class ObjectStoreAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, EnrichResult> {
 
-  private static final Logger log = LoggerFactory.getLogger(MinioAsyncImageFunction.class);
+  private static final Logger log = LoggerFactory.getLogger(ObjectStoreAsyncImageFunction.class);
 
   /** Marker for an unrecoverable image failure; everything else is treated as retryable. */
   private static final class PermanentImageException extends RuntimeException {
@@ -50,7 +50,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
     }
   }
 
-  private transient MinioClient minio;
+  private transient MinioClient objectStore;
   private transient HttpClient http;
   private transient ExecutorService ownedExecutor;
   private transient Executor executor;
@@ -59,9 +59,9 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   // Prometheus. Initialized to a standalone counter for the test/inject path; replaced in open()
   // with the metric-group-registered counter on the cluster.
   private transient Counter retryableFailures = new SimpleCounter();
-  // Throughput/performance metrics for the IMAGE branch: number of successful MinIO uploads and
+  // Throughput/performance metrics for the IMAGE branch: number of successful object-store uploads and
   // cumulative putObject duration in nanoseconds. Average upload latency is derived in Prometheus
-  // as rate(minio_upload_nanos) / rate(minio_uploads). Same standalone-then-registered lifecycle
+  // as rate(object_store_upload_nanos) / rate(object_store_uploads). Same standalone-then-registered lifecycle
   // as retryableFailures.
   private transient Counter uploadCount = new SimpleCounter();
   private transient Counter uploadNanos = new SimpleCounter();
@@ -70,33 +70,33 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   private final int readTimeoutSecs;
   private final int executorThreads;
 
-  public MinioAsyncImageFunction() {
-    connectTimeoutSecs = EnvConfig.envInt("MINIO_FETCH_CONNECT_TIMEOUT_SECS", 10);
-    readTimeoutSecs = EnvConfig.envInt("MINIO_FETCH_READ_TIMEOUT_SECS", 30);
-    executorThreads = EnvConfig.envInt("MINIO_ASYNC_EXECUTOR_THREADS", 32);
+  public ObjectStoreAsyncImageFunction() {
+    connectTimeoutSecs = EnvConfig.envInt("OBJECT_STORE_FETCH_CONNECT_TIMEOUT_SECS", 10);
+    readTimeoutSecs = EnvConfig.envInt("OBJECT_STORE_FETCH_READ_TIMEOUT_SECS", 30);
+    executorThreads = EnvConfig.envInt("OBJECT_STORE_ASYNC_EXECUTOR_THREADS", 32);
   }
 
   /** Injects pre-built clients and an executor, bypassing open(). */
-  MinioAsyncImageFunction(MinioClient minio, HttpClient http, Executor executor) {
+  ObjectStoreAsyncImageFunction(MinioClient objectStore, HttpClient http, Executor executor) {
     this();
-    this.minio = minio;
+    this.objectStore = objectStore;
     this.http = http;
     this.executor = executor;
     mapper = new ObjectMapper();
   }
 
   /**
-   * Builds the MinIO client, redirect-blocking HTTP client, executor, and JSON mapper once per
+   * Builds the object-store client, redirect-blocking HTTP client, executor, and JSON mapper once per
    * slot, and registers the retryable-failure and upload throughput/latency counters with the
    * operator metric group.
    */
   @Override
   public void open(OpenContext openContext) {
-    if (minio == null) {
-      minio = MinioClient.builder()
-          .endpoint(EnvConfig.env("MINIO_ENDPOINT", "http://minio:9000"))
-          .credentials(EnvConfig.env("MINIO_ACCESS_KEY", "minio"),
-              EnvConfig.env("MINIO_SECRET_KEY", "minio123"))
+    if (objectStore == null) {
+      objectStore = MinioClient.builder()
+          .endpoint(EnvConfig.env("OBJECT_STORE_ENDPOINT", "http://object-store:9000"))
+          .credentials(EnvConfig.env("OBJECT_STORE_ACCESS_KEY", "object-store"),
+              EnvConfig.env("OBJECT_STORE_SECRET_KEY", "object-store123"))
           .build();
     }
     if (http == null) {
@@ -115,9 +115,9 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
       mapper = new ObjectMapper();
     }
     retryableFailures = getRuntimeContext().getMetricGroup().counter("image_retryable_failures");
-    uploadCount = getRuntimeContext().getMetricGroup().counter("minio_uploads");
-    uploadNanos = getRuntimeContext().getMetricGroup().counter("minio_upload_nanos");
-    log.info("MinioAsyncImageFunction initialized: executorThreads={}", executorThreads);
+    uploadCount = getRuntimeContext().getMetricGroup().counter("object_store_uploads");
+    uploadNanos = getRuntimeContext().getMetricGroup().counter("object_store_upload_nanos");
+    log.info("ObjectStoreAsyncImageFunction initialized: executorThreads={}", executorThreads);
   }
 
   @Override
@@ -142,12 +142,12 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
 
   /**
    * Builds the enrichment future. Passthrough and idempotency guard short-circuit; otherwise
-   * fetch (async HTTP) then upload (blocking MinIO on the executor). Never blocks, and always
+   * fetch (async HTTP) then upload (blocking object-store call on the executor). Never blocks, and always
    * completes with a classified EnrichResult (success, permanent, or retryable failure),
    * never exceptionally.
    */
   CompletableFuture<EnrichResult> enrich(ProcessedEvent value) {
-    String bucket = EnvConfig.env("MINIO_BUCKET", "images");
+    String bucket = EnvConfig.env("OBJECT_STORE_BUCKET", "images");
     if (value.getImageObjectKey() != null) {
       // Backend already stored the bytes; read the size best-effort so a stat failure never fails this passthrough.
       return CompletableFuture.supplyAsync(
@@ -263,7 +263,7 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   /** Object size, or null if absent (NoSuchKey). Other errors propagate so the URL path retries. */
   private Long statSize(String bucket, String objectKey) {
     try {
-      return minio.statObject(StatObjectArgs.builder().bucket(bucket).object(objectKey).build()).size();
+      return objectStore.statObject(StatObjectArgs.builder().bucket(bucket).object(objectKey).build()).size();
     } catch (ErrorResponseException e) {
       if ("NoSuchKey".equals(e.errorResponse().code())) {
         return null;
@@ -286,14 +286,14 @@ public class MinioAsyncImageFunction extends RichAsyncFunction<ProcessedEvent, E
   }
 
   /**
-   * Uploads the fetched bytes to MinIO and meters the call (count and duration) on success;
+   * Uploads the fetched bytes to the object store and meters the call (count and duration) on success;
    * wraps checked exceptions so they classify as retryable. A failed putObject is not metered,
    * so the upload metrics reflect only genuine writes.
    */
   private void putObjectUnchecked(String bucket, String objectKey, byte[] bytes, String contentType) {
     try (ByteArrayInputStream in = new ByteArrayInputStream(bytes)) {
       long start = System.nanoTime();
-      minio.putObject(PutObjectArgs.builder()
+      objectStore.putObject(PutObjectArgs.builder()
           .bucket(bucket).object(objectKey)
           .stream(in, bytes.length, -1)
           .contentType(contentType)

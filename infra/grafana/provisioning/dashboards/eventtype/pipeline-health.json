@@ -278,7 +278,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Retryable enrichment failures / sec",
-      "description": "Near zero is healthy. Sustained values = the IMAGE branch retrying transient URL-fetch or MinIO-upload errors — a slow or flaky upstream.",
+      "description": "Near zero is healthy. Sustained values = the IMAGE branch retrying transient URL-fetch or object-store upload errors — a slow or flaky upstream.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus-pipeline"
@@ -398,8 +398,8 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Average MinIO upload time (ms)",
-      "description": "Per-image upload time to MinIO. Low and stable is healthy; a rising line means MinIO or the network is slowing the IMAGE path. Successful uploads only.",
+      "title": "Average Object-store upload time (ms)",
+      "description": "Per-image upload time to the object store. Low and stable is healthy; a rising line means the object store or the network is slowing the IMAGE path. Successful uploads only.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus-pipeline"
@@ -423,7 +423,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(sum(rate(flink_taskmanager_job_task_operator_minio_upload_nanos[5m])) / sum(rate(flink_taskmanager_job_task_operator_minio_uploads[5m]))) / 1e6",
+          "expr": "(sum(rate(flink_taskmanager_job_task_operator_object_store_upload_nanos[5m])) / sum(rate(flink_taskmanager_job_task_operator_object_store_uploads[5m]))) / 1e6",
           "legendFormat": "avg upload time"
         }
       ]
@@ -465,7 +465,7 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "MinIO uploads / sec",
+      "title": "Object-store uploads / sec",
       "description": "Successful image uploads/sec. Sits below the IMAGE event rate — idempotent re-hits and passthrough images skip the upload.",
       "datasource": {
         "type": "prometheus",
@@ -489,7 +489,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(flink_taskmanager_job_task_operator_minio_uploads[5m]))",
+          "expr": "sum(rate(flink_taskmanager_job_task_operator_object_store_uploads[5m]))",
           "legendFormat": "uploads/sec"
         }
       ]

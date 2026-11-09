@@ -41,13 +41,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * are deterministic without Docker.
  */
 @ExtendWith(MockitoExtension.class)
-class MinioAsyncImageFunctionTest {
+class ObjectStoreAsyncImageFunctionTest {
 
-  @Mock MinioClient minioClient;
+  @Mock MinioClient objectStoreClient;
   @Mock HttpClient httpClient;
 
-  private MinioAsyncImageFunction newFn() {
-    return new MinioAsyncImageFunction(minioClient, httpClient, Runnable::run);
+  private ObjectStoreAsyncImageFunction newFn() {
+    return new ObjectStoreAsyncImageFunction(objectStoreClient, httpClient, Runnable::run);
   }
 
   private static ProcessedEvent urlEvent(String url) {
@@ -104,12 +104,12 @@ class MinioAsyncImageFunctionTest {
   }
 
   /**
-   * When MinIO already holds the target object (statObject succeeds), enrichment is idempotent:
+   * When the object store already holds the target object (statObject succeeds), enrichment is idempotent:
    * it skips the fetch and upload and returns success, so a checkpoint replay cannot duplicate work.
    */
   @Test
   void objectAlreadyExists_skipsFetchAndUpload() throws Exception {
-    when(minioClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
+    when(objectStoreClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
 
     EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
 
@@ -117,24 +117,24 @@ class MinioAsyncImageFunctionTest {
     assertNull(r.success().getImageUrl());
     assertTrue(r.success().getImageObjectKey().endsWith(".jpg"));
     verify(httpClient, never()).sendAsync(any(), any());
-    verify(minioClient, never()).putObject(any());
+    verify(objectStoreClient, never()).putObject(any());
   }
 
   /**
    * The object is absent (statObject reports NoSuchKey) and the URL returns 200, so the image
-   * is fetched and uploaded to MinIO — the happy path.
+   * is fetched and uploaded to the object store — the happy path.
    */
   @Test
   void objectAbsent_fetchesAndUploads_success() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3})))
         .when(httpClient).sendAsync(any(), any());
 
     EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
 
     assertTrue(r.isSuccess());
-    verify(minioClient).putObject(any());
+    verify(objectStoreClient).putObject(any());
   }
 
   /**
@@ -144,7 +144,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void response4xx_permanentFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(404, null)))
         .when(httpClient).sendAsync(any(), any());
 
@@ -164,7 +164,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void response3xxRedirect_permanentFailure_ssrfGuard() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(302, null)))
         .when(httpClient).sendAsync(any(), any());
 
@@ -181,7 +181,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void response5xx_retryableFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(503, null)))
         .when(httpClient).sendAsync(any(), any());
 
@@ -198,7 +198,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void ioExceptionFromFetch_retryableFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.failedFuture(new IOException("connection reset")))
         .when(httpClient).sendAsync(any(), any());
 
@@ -215,7 +215,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void responseOversized_permanentFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, new byte[10 * 1024 * 1024 + 1])))
         .when(httpClient).sendAsync(any(), any());
 
@@ -228,12 +228,12 @@ class MinioAsyncImageFunctionTest {
   /**
    * A 200 whose Content-Type is not image/* (e.g. an HTML error page returned by an allowlisted
    * host) is not an image and retrying cannot make it one, so it is classified permanent and
-   * never uploaded to MinIO.
+   * never uploaded to the object store.
    */
   @Test
   void response200_nonImageContentType_permanentFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, null, "text/html; charset=utf-8")))
         .when(httpClient).sendAsync(any(), any());
 
@@ -242,7 +242,7 @@ class MinioAsyncImageFunctionTest {
     assertFalse(r.isSuccess());
     assertFalse(r.isRetryable());
     assertEquals(DlqStage.IMAGE_ENRICH.name(), r.failure().stage());
-    verify(minioClient, never()).putObject(any());
+    verify(objectStoreClient, never()).putObject(any());
   }
 
   /**
@@ -253,7 +253,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void response200_missingContentType_permanentFailure() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, null, null)))
         .when(httpClient).sendAsync(any(), any());
 
@@ -261,7 +261,7 @@ class MinioAsyncImageFunctionTest {
 
     assertFalse(r.isSuccess());
     assertFalse(r.isRetryable());
-    verify(minioClient, never()).putObject(any());
+    verify(objectStoreClient, never()).putObject(any());
   }
 
   /**
@@ -287,7 +287,7 @@ class MinioAsyncImageFunctionTest {
   @SuppressWarnings("unchecked")
   void bodyRead_runsOnInjectedExecutor_notHttpClientCompletionThread() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
 
     ExecutorService owned = Executors.newFixedThreadPool(
         2, r -> new Thread(r, "owned-exec-" + UUID.randomUUID()));
@@ -319,7 +319,7 @@ class MinioAsyncImageFunctionTest {
       return pending;
     }).when(httpClient).sendAsync(any(), any());
 
-    EnrichResult r = new MinioAsyncImageFunction(minioClient, httpClient, owned)
+    EnrichResult r = new ObjectStoreAsyncImageFunction(objectStoreClient, httpClient, owned)
         .enrich(urlEvent("https://cdn.example.com/p.jpg"))
         .get(5, TimeUnit.SECONDS);
     owned.shutdownNow();
@@ -338,11 +338,11 @@ class MinioAsyncImageFunctionTest {
   @Test
   void retryableFailure_incrementsRetryableCounter() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(503, null)))
         .when(httpClient).sendAsync(any(), any());
 
-    MinioAsyncImageFunction fn = newFn();
+    ObjectStoreAsyncImageFunction fn = newFn();
     EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/a.jpg")).join();
 
     assertTrue(r.isRetryable());
@@ -356,11 +356,11 @@ class MinioAsyncImageFunctionTest {
   @Test
   void permanentFailure_doesNotIncrementRetryableCounter() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(404, null)))
         .when(httpClient).sendAsync(any(), any());
 
-    MinioAsyncImageFunction fn = newFn();
+    ObjectStoreAsyncImageFunction fn = newFn();
     EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/missing.jpg")).join();
 
     assertFalse(r.isRetryable());
@@ -374,33 +374,33 @@ class MinioAsyncImageFunctionTest {
   @Test
   void success_doesNotIncrementRetryableCounter() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3})))
         .when(httpClient).sendAsync(any(), any());
 
-    MinioAsyncImageFunction fn = newFn();
+    ObjectStoreAsyncImageFunction fn = newFn();
     fn.enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
 
     assertEquals(0, fn.retryableFailureCount());
   }
 
   /**
-   * A successful fetch-and-upload meters exactly one MinIO upload and records a positive
+   * A successful fetch-and-upload meters exactly one object-store upload and records a positive
    * putObject duration, so DATA-vs-IMAGE throughput and average upload latency are observable
    * in Prometheus.
    */
   @Test
   void successfulUpload_isMeteredOnceWithPositiveDuration() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3})))
         .when(httpClient).sendAsync(any(), any());
 
-    MinioAsyncImageFunction fn = newFn();
+    ObjectStoreAsyncImageFunction fn = newFn();
     EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
 
     assertTrue(r.isSuccess());
-    verify(minioClient).putObject(any());
+    verify(objectStoreClient).putObject(any());
     assertEquals(1, fn.uploadCount());
     assertTrue(fn.uploadNanos() > 0, "a successful upload must record a positive duration");
   }
@@ -411,13 +411,13 @@ class MinioAsyncImageFunctionTest {
    */
   @Test
   void idempotencyHit_isNotMeteredAsUpload() throws Exception {
-    when(minioClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
+    when(objectStoreClient.statObject(any())).thenReturn(mock(StatObjectResponse.class));
 
-    MinioAsyncImageFunction fn = newFn();
+    ObjectStoreAsyncImageFunction fn = newFn();
     EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
 
     assertTrue(r.isSuccess());
-    verify(minioClient, never()).putObject(any());
+    verify(objectStoreClient, never()).putObject(any());
     assertEquals(0, fn.uploadCount());
     assertEquals(0, fn.uploadNanos());
   }
@@ -429,11 +429,11 @@ class MinioAsyncImageFunctionTest {
   @Test
   void permanentFailure_isNotMeteredAsUpload() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(404, null)))
         .when(httpClient).sendAsync(any(), any());
 
-    MinioAsyncImageFunction fn = newFn();
+    ObjectStoreAsyncImageFunction fn = newFn();
     EnrichResult r = fn.enrich(urlEvent("https://cdn.example.com/missing.jpg")).join();
 
     assertFalse(r.isSuccess());
@@ -447,7 +447,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void freshUpload_capturesFetchedByteSize() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1, 2, 3, 4, 5})))
         .when(httpClient).sendAsync(any(), any());
 
@@ -465,7 +465,7 @@ class MinioAsyncImageFunctionTest {
   void idempotencyHit_capturesStoredObjectSize() throws Exception {
     StatObjectResponse stat = mock(StatObjectResponse.class);
     when(stat.size()).thenReturn(2048L);
-    when(minioClient.statObject(any())).thenReturn(stat);
+    when(objectStoreClient.statObject(any())).thenReturn(stat);
 
     EnrichResult r = newFn().enrich(urlEvent("https://cdn.example.com/photo.jpg")).join();
 
@@ -482,7 +482,7 @@ class MinioAsyncImageFunctionTest {
   void passthrough_capturesStoredObjectSizeViaStat() throws Exception {
     StatObjectResponse stat = mock(StatObjectResponse.class);
     when(stat.size()).thenReturn(7L * 1024 * 1024);
-    when(minioClient.statObject(any())).thenReturn(stat);
+    when(objectStoreClient.statObject(any())).thenReturn(stat);
     ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
         null, null, "images/2026-05-17/pre.jpg", LocalDate.now());
 
@@ -495,11 +495,11 @@ class MinioAsyncImageFunctionTest {
 
   /**
    * A stat failure on the passthrough branch is best-effort: it leaves the size unknown (null) and
-   * still yields success, so a MinIO blip drops the event from the histogram without failing it.
+   * still yields success, so an object-store blip drops the event from the histogram without failing it.
    */
   @Test
   void passthrough_statFailure_succeedsWithUnknownSize() throws Exception {
-    when(minioClient.statObject(any())).thenThrow(new RuntimeException("minio down"));
+    when(objectStoreClient.statObject(any())).thenThrow(new RuntimeException("object store down"));
     ProcessedEvent e = new ProcessedEvent(UUID.randomUUID(), "IMAGE", Instant.now(), "t",
         null, null, "images/2026-05-17/pre.jpg", LocalDate.now());
 
@@ -516,7 +516,7 @@ class MinioAsyncImageFunctionTest {
   @Test
   void pngUrl_keySuffixedPng() throws Exception {
     ErrorResponseException nsk = noSuchKey();
-    when(minioClient.statObject(any())).thenThrow(nsk);
+    when(objectStoreClient.statObject(any())).thenThrow(nsk);
     doReturn(CompletableFuture.completedFuture(resp(200, new byte[] {1})))
         .when(httpClient).sendAsync(any(), any());
 

@@ -3,7 +3,7 @@
 [![CI](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/erancha/springboot-kafka-flink-postgres-minio-pipeline/actions/workflows/ci.yml)
 
 A [docker-compose](scripts/docker-compose.yml)-deployable real-time data pipeline: events flow one
-direction through **Spring Boot → Kafka → Flink → PostgreSQL / MinIO** sinks.
+direction through **Spring Boot → Kafka → Flink → PostgreSQL / RustFS (S3)** sinks.
 
 **Contents:** [Summary](#summary) · [Overview](#overview) · [Architecture](#architecture) · [Getting started](#getting-started) · [Testing](#testing) · [Analytics](#analytics) · [License](#license)
 
@@ -14,7 +14,7 @@ failure handling: idempotent upserts, bounded timeouts on every external I/O pat
 exactly-once reasoning, and observability.
 
 The stack runs **two independent pipelines** over this path, one at a time: **eventtype** (the default —
-`IMAGE` / `DATA` events landing in MinIO and PostgreSQL) and **userKeys** (`{userId, key, value}`
+`IMAGE` / `DATA` events landing in the object store and PostgreSQL) and **userKeys** (`{userId, key, value}`
 events summed by key over event-time windows into PostgreSQL).
 
 The backend is the pipeline's ingestion gate: it validates and normalizes every request before
@@ -50,7 +50,7 @@ Events flow one direction — [Frontend → ] Backend → Kafka → Flink → si
   passes through it before anything reaches Kafka, rejected with a 4xx if malformed or disallowed. One
   gate serves both pipelines:
   - **eventtype** (`POST /api/events`) — validates and publishes event JSON, and uploads file bytes to
-    MinIO. `IMAGE`-by-URL events are checked against an SSRF allowlist at this edge (the trust boundary
+    the object store. `IMAGE`-by-URL events are checked against an SSRF allowlist at this edge (the trust boundary
     where user-supplied URLs enter), so a disallowed host (e.g. `http://169.254.169.254/`, the
     cloud-metadata endpoint) never reaches Kafka and Flink fetches without re-checking. With
     `PAYLOAD_ENCRYPTION_KEY` set, `DATA` payloads are AES-256-GCM encrypted into a self-describing
@@ -73,9 +73,9 @@ Events flow one direction — [Frontend → ] Backend → Kafka → Flink → si
   - **eventtype** (default) — consumes the `events` stream and routes by event type
     ([`StreamingJob`](flink/src/main/java/com/webcharm/pipeline/eventtype/StreamingJob.java) ·
     [pipeline flow](docs/eventtype/pipeline-flow.md)):
-    - `IMAGE` events **always** land in MinIO (`images/{date}/{id}.{ext}`) — whether uploaded as a
+    - `IMAGE` events **always** land in the object store (`images/{date}/{id}.{ext}`) — whether uploaded as a
       file (stored by the backend at ingestion) or supplied as a URL (fetched and **cloned** into
-      MinIO by Flink; only the object key is persisted to Postgres, never the source URL).
+      the object store by Flink; only the object key is persisted to Postgres, never the source URL).
       [Why clone rather than reference](docs/eventtype/pipeline-flow.md#async-image-enrichment): durable
       and self-contained.
     - `DATA` events are stored in Postgres — written in per-slot
@@ -98,7 +98,7 @@ The pipeline services and their URLs are described in the [Overview](#overview);
 | Service | Role | Access |
 | --- | --- | --- |
 | Kafka UI | inspect topics, consumer groups | http://localhost:8088 |
-| MinIO | object storage; `minio-init` creates the `images` bucket at startup | Console: http://localhost:9011 (`minio` / `minio123`) |
+| RustFS | S3 object storage; `object-store-init` creates the `images` bucket at startup | Console: http://localhost:9011/rustfs/console/ (`object-store` / `object-store123`) |
 | PostgreSQL | analytics store: eventtype `warehouse` db (processed events + aggregates), userKeys `userkeys` db (windowed sums) | localhost:5432 (`postgres` / `postgres`) |
 | Grafana | per-pipeline analytics + Flink pipeline-health dashboards, plus email alert rules on backend/Flink health (both pipelines) | [http://localhost:3031](http://localhost:3031/dashboards) (`admin` / `admin`) |
 | Prometheus | scrapes Flink metrics for operability | http://localhost:9090 |
@@ -120,7 +120,7 @@ Then open the eventtype UI tester at http://localhost:3030 and send events.
 The stack runs one pipeline at a time; select it with `--pipeline` (default `eventtype`):
 
 ```bash
-./scripts/start.sh --pipeline eventtype    # IMAGE / DATA events → MinIO + Postgres
+./scripts/start.sh --pipeline eventtype    # IMAGE / DATA events → object store + Postgres
 ./scripts/start.sh --pipeline userkeys     # {userId, key, value} → windowed sums → Postgres
 ```
 

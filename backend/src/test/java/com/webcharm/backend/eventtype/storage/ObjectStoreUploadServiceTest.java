@@ -18,19 +18,19 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class MinioUploadServiceTest {
+class ObjectStoreUploadServiceTest {
 
-  @Mock MinioClient minioClient;
-  MinioUploadService service;
+  @Mock MinioClient objectStoreClient;
+  ObjectStoreUploadService service;
 
   @BeforeEach
   void setUp() {
-    service = new MinioUploadService(minioClient, "images");
+    service = new ObjectStoreUploadService(objectStoreClient, "images");
   }
 
   @Test
   void upload_jpegFile_returnsKeyWithCorrectDateAndExtension() throws Exception {
-    when(minioClient.putObject(any())).thenReturn(null);
+    when(objectStoreClient.putObject(any())).thenReturn(null);
     UUID id = UUID.fromString("00000000-0000-0000-0000-000000000001");
     Instant eventTime = Instant.parse("2026-05-16T10:00:00Z");
     MockMultipartFile file = new MockMultipartFile(
@@ -39,12 +39,12 @@ class MinioUploadServiceTest {
     String key = service.upload(id, eventTime, file);
 
     assertEquals("images/2026-05-16/00000000-0000-0000-0000-000000000001.jpg", key);
-    verify(minioClient).putObject(any());
+    verify(objectStoreClient).putObject(any());
   }
 
   @Test
   void upload_pngFile_returnsKeyWithPngExtension() throws Exception {
-    when(minioClient.putObject(any())).thenReturn(null);
+    when(objectStoreClient.putObject(any())).thenReturn(null);
     UUID id = UUID.fromString("00000000-0000-0000-0000-000000000002");
     MockMultipartFile file = new MockMultipartFile(
         "file", "photo.png", "image/png", new byte[]{1, 2, 3});
@@ -61,7 +61,7 @@ class MinioUploadServiceTest {
     when(file.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
     when(file.getSize()).thenReturn(3L);
     when(file.getContentType()).thenReturn("image/jpeg");
-    when(minioClient.putObject(any())).thenReturn(null);
+    when(objectStoreClient.putObject(any())).thenReturn(null);
 
     service.upload(UUID.randomUUID(), Instant.now(), file);
 
@@ -69,9 +69,9 @@ class MinioUploadServiceTest {
   }
 
   @Test
-  void upload_minioThrows_wrapsInObjectStoreException() throws Exception {
+  void upload_objectStoreThrows_wrapsInObjectStoreException() throws Exception {
     doThrow(new java.io.IOException("connection refused"))
-        .when(minioClient).putObject(any());
+        .when(objectStoreClient).putObject(any());
     MockMultipartFile file = new MockMultipartFile(
         "file", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
@@ -83,13 +83,13 @@ class MinioUploadServiceTest {
   void delete_removesObjectFromBucket() throws Exception {
     service.delete("images/2026-05-16/some-id.jpg");
 
-    verify(minioClient).removeObject(any());
+    verify(objectStoreClient).removeObject(any());
   }
 
   @Test
-  void delete_minioThrows_wrapsInObjectStoreException() throws Exception {
+  void delete_objectStoreThrows_wrapsInObjectStoreException() throws Exception {
     doThrow(new java.io.IOException("connection refused"))
-        .when(minioClient).removeObject(any());
+        .when(objectStoreClient).removeObject(any());
 
     assertThrows(ObjectStoreException.class, () ->
         service.delete("images/2026-05-16/some-id.jpg"));

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Start the stack, or rebuild/recreate only the named services.
 # Usage: start.sh [--fresh] [--restart] [--rebuild] [--pipeline <name>] [--profile <name>] [service...]
-#   --fresh            Full stack: stop, wipe volumes (DESTROYS Postgres/Kafka/MinIO data) and prune
+#   --fresh            Full stack: stop, wipe volumes (DESTROYS Postgres/Kafka/store data) and prune
 #                      this project's dangling images, then start. Does NOT rebuild images — pair
 #                      with --rebuild (e.g. 'start.sh --fresh --rebuild'). Not combinable with
 #                      --restart or a service list.
 #   --restart          Full stack: stop first (keeps volumes). With services: --force-recreate them.
 #   --rebuild          Rebuild Docker images before starting
 #   --pipeline NAME    Which pipeline to run: eventtype (default) or userkeys. Selects the Compose
-#                      profile, so shared infra plus only that pipeline's job (and MinIO for
+#                      profile, so shared infra plus only that pipeline's job (and the store for
 #                      eventtype) start. Run one pipeline at a time. Switching pipelines needs a full
 #                      restart so the prior job is cleared: 'start.sh --restart --pipeline userkeys'.
 #   --profile testing  Apply docker-compose.testing.yml (enables www.gstatic.com image URL fetching)
@@ -33,7 +33,7 @@ FRESH=false
 RESTART=false
 REBUILD=false
 # Which pipeline's Compose profile to activate. Shared infra carries no profile and always starts;
-# the eventtype/userkeys submitters (and MinIO, eventtype-only) start only under their profile.
+# the eventtype/userkeys submitters (and the store, eventtype-only) start only under their profile.
 PIPELINE=eventtype
 SERVICES=()
 while [[ $# -gt 0 ]]; do

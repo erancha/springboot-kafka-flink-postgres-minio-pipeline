@@ -7,7 +7,7 @@ import com.webcharm.pipeline.common.dlq.DlqRecord;
 import com.webcharm.pipeline.common.dlq.DlqSink;
 import com.webcharm.pipeline.eventtype.functions.CountAggregateFunction;
 import com.webcharm.pipeline.eventtype.functions.EnrichSplitFunction;
-import com.webcharm.pipeline.eventtype.functions.MinioAsyncImageFunction;
+import com.webcharm.pipeline.eventtype.functions.ObjectStoreAsyncImageFunction;
 import com.webcharm.pipeline.eventtype.functions.ParseEventFunction;
 import com.webcharm.pipeline.eventtype.functions.PostgresCountAggWriteFunction;
 import com.webcharm.pipeline.eventtype.functions.PostgresImageSizeBucketCountAggWriteFunction;
@@ -46,7 +46,7 @@ import java.util.function.Predicate;
 
 /**
  * Defines and submits the streaming topology. Parses Kafka events, stamps event-time
- * watermarks, then fans out by eventType: IMAGE through async MinIO enrichment, DATA
+ * watermarks, then fans out by eventType: IMAGE through async object-store enrichment, DATA
  * straight to Postgres. Tumbling-window aggregations feed Postgres alongside the raw
  * writes, and every failure from any branch converges on a single dead-letter Kafka topic.
  */
@@ -101,7 +101,7 @@ public class StreamingJob {
     // DlqRecord stream, and the union below funnels them all to the dead-letter topic.
     SingleOutputStreamOperator<ProcessedEvent> imagePipeline = buildImagePipeline(
         timedEvents.filter(e -> EventType.IMAGE.equals(e.getEventType())));
-    DataStream<DlqRecord> minioErrors = imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG);
+    DataStream<DlqRecord> objectStoreErrors = imagePipeline.getSideOutput(EnrichSplitFunction.UPLOAD_ERROR_TAG);
 
     DataStream<DlqRecord> imagePostgresErrors = imagePipeline
         .process(new PostgresWriteFunction(DlqStage.IMAGE_POSTGRES))
@@ -125,14 +125,14 @@ public class StreamingJob {
     // couples DLQ back-pressure across branches, but dead-letter volume is low (only failures),
     // so it is an acceptable trade-off.
     parseErrors
-        .union(minioErrors, imagePostgresErrors, dataPostgresErrors, countErrors, imageSizeCountErrors)
+        .union(objectStoreErrors, imagePostgresErrors, dataPostgresErrors, countErrors, imageSizeCountErrors)
         .map(new DlqMeterFunction<>(DlqStage.class))
         .name("dlq-meter")
         .sinkTo(DlqSink.build(kafkaBootstrap, dlqTopic))
         .name("dlq-sink");
 
     log.info("Starting StreamingJob: bootstrap={} topic={}", kafkaBootstrap, kafkaTopic);
-    executionEnv.execute("Kafka->Flink->(MinIO,Postgres)");
+    executionEnv.execute("Kafka->Flink->(ObjectStore,Postgres)");
   }
 
   /**
@@ -187,7 +187,7 @@ public class StreamingJob {
   }
 
   /**
-   * Wires the IMAGE branch as a Flink async I/O operator (non-blocking fetch plus MinIO upload,
+   * Wires the IMAGE branch as a Flink async I/O operator (non-blocking fetch plus object-store upload,
    * framework-managed exponential-backoff retry on transient failures) followed by a non-blocking
    * split. Returns the split operator whose main output is enriched events, whose
    * EnrichSplitFunction.UPLOAD_ERROR_TAG side output carries DLQ records, and whose
@@ -197,9 +197,9 @@ public class StreamingJob {
   static SingleOutputStreamOperator<ProcessedEvent> buildImagePipeline(
       DataStream<ProcessedEvent> imageEvents) {
 
-    int capacity = EnvConfig.envInt("MINIO_ASYNC_CAPACITY", 100);
-    int timeoutSecs = EnvConfig.envInt("MINIO_ASYNC_TIMEOUT_SECS", 120);
-    int maxAttempts = EnvConfig.envInt("MINIO_ASYNC_MAX_ATTEMPTS", 3);
+    int capacity = EnvConfig.envInt("OBJECT_STORE_ASYNC_CAPACITY", 100);
+    int timeoutSecs = EnvConfig.envInt("OBJECT_STORE_ASYNC_TIMEOUT_SECS", 120);
+    int maxAttempts = EnvConfig.envInt("OBJECT_STORE_ASYNC_MAX_ATTEMPTS", 3);
 
     SerializablePredicate<Collection<EnrichResult>> retryable = results -> results.stream().anyMatch(EnrichResult::isRetryable);
     AsyncRetryStrategy<EnrichResult> retryStrategy = new AsyncRetryStrategies.ExponentialBackoffDelayRetryStrategyBuilder<EnrichResult>(
@@ -209,11 +209,11 @@ public class StreamingJob {
 
     SingleOutputStreamOperator<EnrichResult> enriched = AsyncDataStream.unorderedWaitWithRetry(
         imageEvents,
-        new MinioAsyncImageFunction(),
+        new ObjectStoreAsyncImageFunction(),
         timeoutSecs, TimeUnit.SECONDS,
         capacity,
         retryStrategy)
-        .name("minio-enrich-async");
+        .name("object-store-enrich-async");
 
     return enriched
         .process(new EnrichSplitFunction())

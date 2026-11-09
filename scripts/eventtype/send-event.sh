@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Send one DATA and/or IMAGE event to the running backend, then show where each
-# landed: the processed_events row written by Flink, plus the MinIO object for IMAGE.
+# landed: the processed_events row written by Flink, plus the stored object for IMAGE.
 # A manual single-shot tool — no threads, iterations, or tallies.
 # Real load testing belongs in a dedicated tool (e.g. JMeter), not here.
 # Usage: send-event.sh [options]
-#   -t, --type TYPE     data | image | both   (default both)
-#       --verify-minio  also list the MinIO object for IMAGE events (default off)
+#   -t, --type TYPE            data | image | both   (default both)
+#       --verify-object-store  also list the stored object for IMAGE events (default off)
 #   -h, --help
 # Examples:
-#   ./scripts/eventtype/send-event.sh                              # one DATA + one IMAGE event
-#   ./scripts/eventtype/send-event.sh --type image --verify-minio  # IMAGE + confirm object in MinIO
+#   ./scripts/eventtype/send-event.sh                                     # one DATA + one IMAGE event
+#   ./scripts/eventtype/send-event.sh --type image --verify-object-store  # IMAGE + list the stored object
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,11 +22,11 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 TYPE=both
-VERIFY_MINIO=false
+VERIFY_OBJECT_STORE=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -t|--type)      TYPE="${2:-}"; shift 2 ;;
-    --verify-minio) VERIFY_MINIO=true; shift ;;
+    -t|--type)             TYPE="${2:-}"; shift 2 ;;
+    --verify-object-store) VERIFY_OBJECT_STORE=true; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -125,16 +125,16 @@ send_one() {
     "SELECT id, event_type, source, payload, image_object_key, inserted_at
        FROM processed_events WHERE id = '${id}';"
 
-  # The landed row's image_object_key is set by Flink only after the MinIO upload succeeds,
-  # so the object's presence is already implied. --verify-minio adds an explicit listing
-  # (which spins up a one-off mc container) for when that extra confirmation is wanted.
-  if [[ "$type" == "image" && "$VERIFY_MINIO" == true ]]; then
+  # The landed row's image_object_key is set by Flink only after the object upload succeeds,
+  # so the object's presence is already implied. --verify-object-store adds an explicit listing
+  # (which spins up a one-off AWS CLI container) for when that extra confirmation is wanted.
+  if [[ "$type" == "image" && "$VERIFY_OBJECT_STORE" == true ]]; then
     object_key="$("$ROOT_DIR/scripts/sql-helper.sh" -tA -c \
       "SELECT image_object_key FROM processed_events WHERE id = '${id}';" 2>/dev/null \
       | tr -d '[:space:]')" || object_key=""
     if [[ -n "$object_key" ]]; then
-      echo "→ MinIO object:"
-      "$ROOT_DIR/scripts/minio-helper.sh" ls "$object_key" || echo "  (could not list ${object_key})" >&2
+      echo "→ Stored object:"
+      "$ROOT_DIR/scripts/object-store-helper.sh" ls "$object_key" || echo "  (could not list ${object_key})" >&2
     fi
   fi
 }

@@ -1,4 +1,4 @@
-package com.webcharm.backend.minio;
+package com.webcharm.backend.objectstore;
 
 import io.minio.MinioClient;
 import io.minio.http.HttpUtils;
@@ -8,34 +8,34 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Produces the MinioClient Spring bean from application.yml minio.* properties, backed by an
+ * Produces the MinioClient Spring bean from application.yml object-store.* properties, backed by an
  * HTTP client whose connect, write, and read timeouts are explicitly bounded so a degraded
- * MinIO cannot hold a Tomcat request thread for the minio SDK's 5-minute default and
- * exhaust the worker pool.
+ * object store cannot hold a Tomcat request thread for the MinIO client library's 5-minute
+ * default and exhaust the worker pool.
  */
 @Configuration
-class MinioConfig {
+class ObjectStoreConfig {
 
-  @Value("${minio.endpoint}")
+  @Value("${object-store.endpoint}")
   private String endpoint;
 
-  @Value("${minio.access-key}")
+  @Value("${object-store.access-key}")
   private String accessKey;
 
-  @Value("${minio.secret-key}")
+  @Value("${object-store.secret-key}")
   private String secretKey;
 
-  @Value("${minio.connect-timeout-secs}")
+  @Value("${object-store.connect-timeout-secs}")
   private int connectTimeoutSecs;
 
-  @Value("${minio.write-timeout-secs}")
+  @Value("${object-store.write-timeout-secs}")
   private int writeTimeoutSecs;
 
-  @Value("${minio.read-timeout-secs}")
+  @Value("${object-store.read-timeout-secs}")
   private int readTimeoutSecs;
 
   @Bean
-  MinioClient minioClient() {
+  MinioClient objectStoreClient() {
     return MinioClient.builder()
         .endpoint(endpoint)
         .credentials(accessKey, secretKey)

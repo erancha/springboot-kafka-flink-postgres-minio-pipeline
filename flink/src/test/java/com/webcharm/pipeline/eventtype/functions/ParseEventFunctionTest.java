@@ -253,7 +253,7 @@ class ParseEventFunctionTest {
    * A missing eventTime is routed to the DLQ rather than backfilled with Instant.now().
    * Fabricating the time makes the parse non-deterministic: a replay would derive a different
    * eventTime (and partition date), so the id-keyed upsert would overwrite the row with
-   * different data and an IMAGE object would land under a different MinIO key.
+   * different data and an IMAGE object would land under a different object-store key.
    */
   @Test
   void processElement_missingEventTime_routesToDlq() throws Exception {

@@ -1,19 +1,19 @@
-# Future Migration: MinIO → S3
+# Future Migration: self-hosted object store → S3
 
 ## Current State
 
-The backend has a storage abstraction in place: `ImageUploadService` (interface) and its sole implementation `MinioUploadService` live in `backend/src/main/java/com/webcharm/backend/eventtype/storage/`; the vendor-neutral `ObjectStoreException` lives in `backend/src/main/java/com/webcharm/backend/storage/`. The `minio` sub-package holds only `MinioConfig`.
+The backend has a storage abstraction in place: `ImageUploadService` (interface) and its sole implementation `ObjectStoreUploadService` live in `backend/src/main/java/com/webcharm/backend/eventtype/storage/`; the vendor-neutral `ObjectStoreException` lives in `backend/src/main/java/com/webcharm/backend/storage/`. The `minio` sub-package holds only `ObjectStoreConfig`.
 
-The Flink job (`MinioAsyncImageFunction`) talks to MinIO directly via `MinioClient`, wired in `open()` from env vars. There is no abstraction layer in Flink yet.
+The Flink job (`ObjectStoreAsyncImageFunction`) talks to the object store directly via `MinioClient`, wired in `open()` from env vars. There is no abstraction layer in Flink yet.
 
 ```mermaid
 graph LR
-    EC[EventController] -->|ImageUploadService| MUS[MinioUploadService]
+    EC[EventController] -->|ImageUploadService| MUS[ObjectStoreUploadService]
     MUS --> MC[MinioClient]
-    MC --> MinIO[(MinIO)]
+    MC --> Store[(RustFS)]
 
-    MUF[MinioAsyncImageFunction\nFlink] --> MC2[MinioClient]
-    MC2 --> MinIO
+    MUF[ObjectStoreAsyncImageFunction\nFlink] --> MC2[MinioClient]
+    MC2 --> Store
 ```
 
 ## Target State
@@ -24,7 +24,7 @@ A shared Maven module will hold the abstraction and both implementations. Each c
 graph LR
     subgraph shared module
         IF[ImageUploadService\ninterface]
-        MMIUS[MinioImageUploadService]
+        MMIUS[ObjectStoreImageUploadService]
         S3IUS[S3ImageUploadService]
         IF --> MMIUS
         IF --> S3IUS
@@ -32,14 +32,14 @@ graph LR
 
     subgraph backend
         EC[EventController] -->|ImageUploadService| IF
-        MC[MinioConfig / S3Config\n@Bean] --> IF
+        MC[ObjectStoreConfig / S3Config\n@Bean] --> IF
     end
 
     subgraph flink
-        MUF[MinioAsyncImageFunction\nopen] -->|ImageUploadService| IF
+        MUF[ObjectStoreAsyncImageFunction\nopen] -->|ImageUploadService| IF
     end
 
-    MMIUS --> MinIO[(MinIO)]
+    MMIUS --> Store[(RustFS)]
     S3IUS --> S3[(AWS S3)]
 ```
 
@@ -51,11 +51,11 @@ Add a `shared/` Maven module with no Spring, no Flink dependencies — only the 
 
 ```
 shared/
-  pom.xml                          ← depends on minio SDK + AWS SDK
+  pom.xml                          ← depends on the MinIO client library + AWS SDK
   src/main/java/com/webcharm/shared/storage/
     ImageUploadService.java        ← move from backend/eventtype/storage (unchanged)
     ObjectStoreException.java      ← move from backend/storage (unchanged)
-    MinioImageUploadService.java   ← move + rename from backend/eventtype/storage/MinioUploadService
+    ObjectStoreImageUploadService.java   ← move + rename from backend/eventtype/storage/ObjectStoreUploadService
     S3ImageUploadService.java      ← new
 ```
 
@@ -63,11 +63,11 @@ Add the `shared` module as a dependency in both `backend/pom.xml` and `flink/pom
 
 ### 2. Write S3ImageUploadService
 
-Implement `ImageUploadService` using the AWS S3 SDK. Mirror the key structure (`images/{date}/{uuid}.{ext}`) so stored objects are path-compatible with MinIO.
+Implement `ImageUploadService` using the AWS S3 SDK. Mirror the key structure (`images/{date}/{uuid}.{ext}`) so stored objects are path-compatible with the current store.
 
 ### 3. Wire the implementation
 
-**Backend** — swap the `@Bean` in `MinioConfig` (or add `S3Config`):
+**Backend** — swap the `@Bean` in `ObjectStoreConfig` (or add `S3Config`):
 ```java
 @Bean
 ImageUploadService imageUploadService(...) {
@@ -75,18 +75,18 @@ ImageUploadService imageUploadService(...) {
 }
 ```
 
-**Flink** — swap the instantiation in `MinioAsyncImageFunction.open()`:
+**Flink** — swap the instantiation in `ObjectStoreAsyncImageFunction.open()`:
 ```java
 this.imageUploadService = new S3ImageUploadService(s3Client, bucket);
 ```
 
 ### 4. Configuration
 
-Replace the `MINIO_*` env vars with `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`. Both sets can coexist during transition.
+Replace the `OBJECT_STORE_*` env vars with `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`. Both sets can coexist during transition.
 
 ### 5. Data migration
 
-Existing objects in MinIO need to be copied to S3 before cutover. The key structure is identical, so no application-level changes are needed for previously stored references.
+Existing objects in RustFS need to be copied to S3 before cutover. The key structure is identical, so no application-level changes are needed for previously stored references.
 
 ## Why Not Now
 

@@ -121,7 +121,7 @@ export default function App() {
     <div className='page'>
       <h1 className='page__heading'>Real-time Pipeline UI - Tester</h1>
       <p className='page__intro'>
-        Submit <b>DATA</b> or <b>IMAGE</b> events. The backend publishes to Kafka; Flink processes into Postgres / MinIO.
+        Submit <b>DATA</b> or <b>IMAGE</b> events. The backend publishes to Kafka; Flink processes into Postgres / object storage.
       </p>
 
       <EventControls

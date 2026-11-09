@@ -55,6 +55,14 @@ render_prometheus_backend_target() {
 EOF
 }
 
+# Runs one shell command inside a throwaway container of the object-store-init service, whose definition
+# supplies the AWS CLI, the store endpoint and the credentials; $OBJECT_STORE_BUCKET expands in there.
+# --entrypoint overrides the bucket-bootstrap entrypoint; without it the command would only be
+# passed as ignored args to that entrypoint and never run.
+s3_cli() {
+  compose run --rm -T --entrypoint /bin/sh object-store-init -c "$1"
+}
+
 require_docker() {
   command -v docker >/dev/null 2>&1 || {
     echo "docker not found" >&2
