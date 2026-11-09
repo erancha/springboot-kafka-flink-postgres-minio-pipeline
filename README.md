@@ -115,6 +115,12 @@ cp .env.example .env                            # then fill in the blank keys â€
 
 Then open the eventtype UI tester at http://localhost:3030 and send events.
 
+To take the stack down (this also deletes its data; add `--keep-volumes` to preserve it):
+
+```bash
+./scripts/docker-helper.sh --stop
+```
+
 ### Choosing a pipeline
 
 The stack runs one pipeline at a time; select it with `--pipeline` (default `eventtype`):
@@ -137,6 +143,14 @@ Additional commands:
 ```
 
 ## Testing
+
+For a minimal end-to-end check, start the stack and send an event through the active pipeline. The
+script prints the Postgres row Flink wrote, or fails if nothing lands:
+
+```bash
+./scripts/eventtype/send-event.sh --verify-object-store   # one DATA + one IMAGE event; also lists the stored image
+./scripts/userkeys/send-event.sh                          # a burst for one (userId, key); shows the windowed sum
+```
 
 Unit, component, and integration test suites and how to run them are documented in [testing.md](docs/testing.md).
 
